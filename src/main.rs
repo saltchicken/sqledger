@@ -90,11 +90,7 @@ impl App {
             }
         };
 
-        for entry in script_dir_entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(extension) = path.extension() {
+                .flatten() // unwraps only Ok(entry), skips Err(entry)
                         if extension == "sql" {
                             // Store the full, absolute path
                             sql_files.push(path.to_string_lossy().to_string());
