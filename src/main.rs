@@ -5,22 +5,21 @@ use crossterm::{
 };
 use ratatui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout}, // ‼️ Removed unused `Rect`
+    layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
-    Frame,
-    Terminal,
+    Frame, Terminal,
 };
 use rusqlite::{Connection, Error as RusqliteError};
 use std::{
-    fs::{self},         // ‼️ Removed unused `File`
-    io::{self, stdout}, // ‼️ Removed unused `Stdout` and `Write`
+    fs::{self},
+    io::{self, stdout},
     path::Path,
+    process::Command,
 };
 
 const DB_NAME: &str = "scripts.db";
 
-/// App holds the state of the application
 struct App {
     /// List of `.sql` file paths in the current directory
     sql_files: Vec<String>,
@@ -28,7 +27,7 @@ struct App {
     list_state: ListState,
     /// The string result of the last executed query
     query_result: String,
-    /// The content of the currently selected SQL script ‼️
+    /// The content of the currently selected SQL script
     script_content_preview: String,
 }
 
@@ -57,7 +56,7 @@ impl App {
 
         if !sql_files.is_empty() {
             list_state.select(Some(0));
-            // ‼️ Load content of the first file for preview
+            // Load content of the first file for preview
             script_content_preview = fs::read_to_string(&sql_files[0])
                 .unwrap_or_else(|e| format!("Error reading file: {}", e));
         }
@@ -66,7 +65,7 @@ impl App {
             sql_files,
             list_state,
             query_result: "Welcome!\n\nPress 'j'/'k' to navigate.\nPress 'l' or 'Enter' to run the selected SQL script.\nPress 'q' to quit.".to_string(),
-            script_content_preview, // ‼️
+            script_content_preview,
         })
     }
 
@@ -94,7 +93,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
-        self.update_preview(); // ‼️ Update preview on selection change
+        self.update_preview();
     }
 
     /// Moves the list selection up
@@ -251,7 +250,8 @@ INSERT INTO users (name, email) VALUES ('Bob', 'bob@example.com');",
 }
 
 /// The main TUI loop
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
+fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
+    // ‼️ Fixed syntax error here
     loop {
         terminal.draw(|f| ui(f, app))?;
 
@@ -261,6 +261,60 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                 KeyCode::Char('j') | KeyCode::Down => app.next(),
                 KeyCode::Char('k') | KeyCode::Up => app.previous(),
                 KeyCode::Char('l') | KeyCode::Enter => app.execute_selected_script(),
+                // ‼️ --- Start: Handle 'e' for edit ---
+                KeyCode::Char('e') => {
+                    // 1. Get the file to edit. Clone path to avoid borrow issues.
+                    let file_to_edit = match app.list_state.selected() {
+                        Some(i) => Some(app.sql_files[i].clone()),
+                        None => None,
+                    };
+
+                    if let Some(file_path) = file_to_edit {
+                        // 2. Suspend the TUI: disable raw mode and leave alternate screen
+                        disable_raw_mode()?;
+                        execute!(
+                            terminal.backend_mut(),
+                            LeaveAlternateScreen,
+                            DisableMouseCapture
+                        )?;
+                        terminal.show_cursor()?;
+
+                        // 3. Run nvim and wait for it to exit
+                        let status = Command::new("nvim").arg(&file_path).status();
+
+                        // 4. Restore the TUI: re-enter alternate screen and enable raw mode
+                        enable_raw_mode()?;
+                        execute!(
+                            terminal.backend_mut(),
+                            EnterAlternateScreen,
+                            EnableMouseCapture
+                        )?;
+                        terminal.clear()?; // ‼️ Force a full redraw
+
+                        // 5. Handle command result and update preview
+                        match status {
+                            Ok(exit_status) => {
+                                if exit_status.success() {
+                                    // File might have changed, so update the preview
+                                    app.update_preview();
+                                    app.query_result = format!("Finished editing {}.", file_path);
+                                } else {
+                                    app.query_result =
+                                        format!("nvim exited with error: {}", exit_status);
+                                }
+                            }
+                            Err(e) => {
+                                app.query_result = format!(
+                                    "Failed to run nvim: {}. \nIs it installed and in your PATH?",
+                                    e
+                                );
+                            }
+                        }
+                    } else {
+                        app.query_result = "No file selected to edit.".to_string();
+                    }
+                }
+                // ‼️ --- End: Handle 'e' for edit ---
                 _ => {}
             }
         }
