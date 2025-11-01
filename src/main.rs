@@ -28,6 +28,8 @@ struct App {
     list_state: ListState,
     /// The string result of the last executed query
     query_result: String,
+    /// The content of the currently selected SQL script ‼️
+    script_content_preview: String,
 }
 
 impl App {
@@ -51,15 +53,32 @@ impl App {
         sql_files.sort();
 
         let mut list_state = ListState::default();
+        let mut script_content_preview = String::from("No SQL file selected."); // ‼️
+
         if !sql_files.is_empty() {
             list_state.select(Some(0));
+            // ‼️ Load content of the first file for preview
+            script_content_preview = fs::read_to_string(&sql_files[0])
+                .unwrap_or_else(|e| format!("Error reading file: {}", e));
         }
 
         Ok(Self {
             sql_files,
             list_state,
             query_result: "Welcome!\n\nPress 'j'/'k' to navigate.\nPress 'l' or 'Enter' to run the selected SQL script.\nPress 'q' to quit.".to_string(),
+            script_content_preview, // ‼️
         })
+    }
+
+    // ‼️ New helper function to update the script preview
+    fn update_preview(&mut self) {
+        if let Some(selected_index) = self.list_state.selected() {
+            let file_path = &self.sql_files[selected_index];
+            self.script_content_preview = fs::read_to_string(file_path)
+                .unwrap_or_else(|e| format!("Error reading file {}:\n{}", file_path, e));
+        } else {
+            self.script_content_preview = String::from("No SQL file selected.");
+        }
     }
 
     /// Moves the list selection down
@@ -75,6 +94,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.update_preview(); // ‼️ Update preview on selection change
     }
 
     /// Moves the list selection up
@@ -90,6 +110,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.update_preview(); // ‼️ Update preview on selection change
     }
 
     /// Executes the currently selected SQL script
@@ -275,10 +296,28 @@ fn ui(f: &mut Frame, app: &mut App) {
     // Render the list
     f.render_stateful_widget(list, chunks[0], &mut app.list_state);
 
-    // --- Right Pane: Query Results ---
+    // ‼️ --- Right side layout ---
+    // ‼️ Split the right chunk vertically: 40% for preview, 60% for results
+    let right_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)].as_ref())
+        .split(chunks[1]); // ‼️ Split the right-hand chunk
+
+    // ‼️ --- Top-Right Pane: Script Preview ---
+    let preview_paragraph = Paragraph::new(app.script_content_preview.as_str())
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Script Preview"),
+        )
+        .wrap(Wrap { trim: true });
+
+    f.render_widget(preview_paragraph, right_chunks[0]); // ‼️ Render in the new top-right chunk
+
+    // ‼️ --- Bottom-Right Pane: Query Results ---
     let results_paragraph = Paragraph::new(app.query_result.as_str())
         .block(Block::default().borders(Borders::ALL).title("Results"))
         .wrap(Wrap { trim: true });
 
-    f.render_widget(results_paragraph, chunks[1]);
+    f.render_widget(results_paragraph, right_chunks[1]); // ‼️ Render in the new bottom-right chunk
 }
