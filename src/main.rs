@@ -90,17 +90,15 @@ impl App {
             }
         };
 
-                .flatten() // unwraps only Ok(entry), skips Err(entry)
-                        if extension == "sql" {
-                            // Store the full, absolute path
-                            sql_files.push(path.to_string_lossy().to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        sql_files.sort(); // Sort the files alphabetically
+        sql_files.extend(
+            script_dir_entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.is_file())
+                .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
+                .map(|path| path.to_string_lossy().to_string()),
+        );
+        sql_files.sort();
 
         let mut list_state = ListState::default();
         let mut script_content_preview = "No SQL files found.".to_string();
@@ -200,9 +198,9 @@ fn execute_sql(app: &mut App, db_path: &str) {
 
                         let rows = stmt.query_map([], |row| {
                             let mut values = Vec::new();
-                            for i in 0..widths.len() {
+                            for (i, width) in widths.iter_mut().enumerate() {
                                 let val: String = row.get(i).unwrap_or_else(|_| "NULL".to_string());
-                                widths[i] = widths[i].max(val.len());
+                                *width = (*width).max(val.len());
                                 values.push(val);
                             }
                             Ok(values)
