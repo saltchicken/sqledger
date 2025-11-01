@@ -7,10 +7,8 @@ use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    // ‼️ Removed unused text::{Line, Span}
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Frame,
-    Terminal,
+    Frame, Terminal,
 };
 use rusqlite::{Connection, Error as RusqliteError};
 use serde::Deserialize;
@@ -49,7 +47,7 @@ impl Default for Config {
 
 // Function to load configuration
 fn load_config(config_path: &Path) -> Config {
-    if let Ok(content) = fs::read_to_string(&config_path) {
+    if let Ok(content) = fs::read_to_string(config_path) {
         // Try to parse, fall back to default on error
         return toml::from_str(&content).unwrap_or_else(|e| {
             println!(
