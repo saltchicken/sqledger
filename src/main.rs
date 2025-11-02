@@ -124,11 +124,7 @@ impl App {
 
         let mut valid_selection_exists = false;
         if let Some(selected_index) = self.list_state.selected() {
-            if selected_index >= self.sql_files.len() {
-                valid_selection_exists = false;
-            } else {
-                valid_selection_exists = true;
-            }
+            valid_selection_exists = selected_index < self.sql_files.len();
         }
 
         if !valid_selection_exists {
@@ -403,7 +399,6 @@ fn run_app<B: Backend + io::Write>(
                         KeyCode::Char('a') => {
                             app.input_mode = InputMode::EditingFilename;
                             app.filename_input.clear();
-                            // ‼️ Updated prompt text
                             app.query_result =
                                 "Enter new script name (no extension). Press [Enter] to confirm, [Esc] to cancel."
                                     .to_string();
@@ -453,7 +448,7 @@ fn run_app<B: Backend + io::Write>(
                                     let new_file_path_str =
                                         new_file_path.to_string_lossy().to_string();
 
-                                    fs::write(&new_file_path, "-- New SQL Script\n")?;
+                                    fs::write(&new_file_path, "")?;
                                     let success = open_editor(terminal, &new_file_path)?;
 
                                     if !success {
@@ -657,7 +652,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         let area = centered_rect(50, 3, f.area());
         let input_text = format!("{}_", app.filename_input);
         let popup_block = Block::default()
-            .title("New Script Name (no .sql)")
+            .title("New Script Name")
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::LightBlue));
 
