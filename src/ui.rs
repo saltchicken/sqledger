@@ -55,37 +55,44 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(results_text, right_chunks[1]);
 
     // --- Popup Windows ---
-    if app.input_mode == InputMode::EditingFilename {
-        let area = centered_rect(50, 3, f.area());
-        let input_text = format!("{}_", app.filename_input);
-        let popup_block = Block::default()
-            .title("New Script Name")
-            .borders(Borders::ALL)
-            .style(Style::default().bg(Color::LightBlue));
-        let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
-        f.render_widget(Clear, area);
-        f.render_widget(input_paragraph, area);
-    } else if app.input_mode == InputMode::ConfirmingDelete {
-        let area = centered_rect(50, 3, f.area());
-        let popup_block = Block::default()
-            .title("Confirm Deletion")
-            .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Red).fg(Color::White));
-        let popup_paragraph = Paragraph::new(app.query_result.as_str())
-            .block(popup_block)
-            .alignment(Alignment::Center);
-        f.render_widget(Clear, area);
-        f.render_widget(popup_paragraph, area);
-    } else if app.input_mode == InputMode::RenamingScript {
-        let area = centered_rect(50, 3, f.area());
-        let input_text = format!("{}_", app.filename_input);
-        let popup_block = Block::default()
-            .title("Rename Script")
-            .borders(Borders::ALL)
-            .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
-        let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
-        f.render_widget(Clear, area);
-        f.render_widget(input_paragraph, area);
+    match app.input_mode {
+        InputMode::EditingFilename => {
+            let area = centered_rect(50, 3, f.area());
+            let input_text = format!("{}_", app.filename_input);
+            let popup_block = Block::default()
+                .title("New Script Name")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::LightBlue));
+            let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
+            f.render_widget(Clear, area);
+            f.render_widget(input_paragraph, area);
+        }
+        InputMode::ConfirmingDelete => {
+            let area = centered_rect(50, 3, f.area());
+            let popup_block = Block::default()
+                .title("Confirm Deletion")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::Red).fg(Color::White));
+            let popup_paragraph = Paragraph::new(app.query_result.as_str())
+                .block(popup_block)
+                .alignment(Alignment::Center);
+            f.render_widget(Clear, area);
+            f.render_widget(popup_paragraph, area);
+        }
+        InputMode::RenamingScript => {
+            let area = centered_rect(50, 3, f.area());
+            let input_text = format!("{}_", app.filename_input);
+            let popup_block = Block::default()
+                .title("Rename Script")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
+            let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
+            f.render_widget(Clear, area);
+            f.render_widget(input_paragraph, area);
+        }
+        InputMode::Normal => {
+            // Do nothing
+        }
     }
 }
 
