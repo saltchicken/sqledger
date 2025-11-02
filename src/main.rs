@@ -143,6 +143,9 @@ fn run_app<B: Backend + io::Write>(
                                 app.query_result = "No script selected to rename.".to_string();
                             }
                         }
+                        KeyCode::Char('?') => {
+                            app.input_mode = InputMode::ShowHelp;
+                        }
                         _ => {}
                     },
                     InputMode::EditingFilename => match key.code {
@@ -298,6 +301,12 @@ fn run_app<B: Backend + io::Write>(
                         }
                         KeyCode::Char(c) => {
                             app.filename_input.push(c);
+                        }
+                        _ => {}
+                    },
+                    InputMode::ShowHelp => match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc | KeyCode::Char('?') => {
+                            app.input_mode = InputMode::Normal;
                         }
                         _ => {}
                     },

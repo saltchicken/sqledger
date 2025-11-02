@@ -90,6 +90,17 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             f.render_widget(Clear, area);
             f.render_widget(input_paragraph, area);
         }
+        InputMode::ShowHelp => {
+            let area = centered_rect(60, 15, f.area()); // 60% width, 15 lines height
+            let popup_block = Block::default().title("Help").borders(Borders::ALL);
+
+            let popup_paragraph = Paragraph::new(app.help_message.as_str())
+                .block(popup_block)
+                .alignment(Alignment::Left);
+
+            f.render_widget(Clear, area);
+            f.render_widget(popup_paragraph, area);
+        }
         InputMode::Normal => {
             // Do nothing
         }

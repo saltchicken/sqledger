@@ -7,6 +7,7 @@ pub enum InputMode {
     EditingFilename,
     ConfirmingDelete,
     RenamingScript,
+    ShowHelp,
 }
 
 /// App holds the state of the application
@@ -17,24 +18,25 @@ pub struct App {
     pub script_content_preview: String,
     pub input_mode: InputMode,
     pub filename_input: String,
+    pub help_message: String,
 }
 
 impl App {
     /// Creates a new App, scanning the configured script directory for .sql files
     pub fn new(script_dir_path: &Path, db_path: &Path) -> io::Result<Self> {
-        let welcome_message = format!(
-            "Welcome!\n\nLoading scripts from: {}\nLoading database from: {}\n\nPress 'j'/'k' to navigate.\nPress 'l' or 'Enter' to run.\nPress 'e' to edit.\nPress 'a' to add new script.\nPress 'd' to delete.\nPress 'r' to rename.\nPress 'q' to quit.",
+        let help_message = format!(
+            "Welcome to sqledger!\n\nScripts: {}\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k' or ↓/↑: Navigate scripts\n'l' or 'Enter' : Run selected script\n'e'              : Edit selected script\n'a'              : Add a new script\n'd'              : Delete selected script\n'r'              : Rename selected script\n'?'              : Toggle this help message\n'q'              : Quit",
             script_dir_path.display(),
             db_path.display()
         );
-
         let mut app = Self {
             sql_files: Vec::new(),
             list_state: ListState::default(),
-            query_result: welcome_message,
+            query_result: "Welcome! Press '?' for help.".to_string(),
             script_content_preview: "".to_string(),
             input_mode: InputMode::Normal,
             filename_input: String::new(),
+            help_message,
         };
         app.rescan_scripts(script_dir_path)?;
         Ok(app)
