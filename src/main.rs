@@ -13,9 +13,10 @@ use ratatui::{
 use rusqlite::{Connection, Error as RusqliteError};
 use serde::Deserialize;
 use std::{
+    ffi::OsStr, // ‼️ Import OsStr
     fs::{self},
-    io::{self, stdout, Write},
-    path::{Path, PathBuf},
+    io::{self, stdout}, // ‼️ Removed Write
+    path::Path,         // ‼️ Removed PathBuf
     process::Command,
 };
 
@@ -29,10 +30,9 @@ enum InputMode {
     Normal,
     EditingFilename,
     ConfirmingDelete,
-    RenamingScript, // ‼️ New state for renaming
+    RenamingScript,
 }
 
-// ... (Config, default_script_dir, Default for Config, load_config remain the same) ...
 #[derive(Deserialize, Debug)]
 struct Config {
     #[serde(default = "default_script_dir")]
@@ -74,7 +74,6 @@ struct App {
 impl App {
     /// Creates a new App, scanning the configured script directory for .sql files
     fn new(script_dir_path: &Path, db_path: &Path) -> io::Result<Self> {
-        // ‼️ Updated help text
         let welcome_message = format!(
             "Welcome!\n\nLoading scripts from: {}\nLoading database from: {}\n\nPress 'j'/'k' to navigate.\nPress 'l' or 'Enter' to run.\nPress 'e' to edit.\nPress 'a' to add new script.\nPress 'd' to delete.\nPress 'r' to rename.\nPress 'q' to quit.",
             script_dir_path.display(),
@@ -144,21 +143,20 @@ impl App {
         Ok(())
     }
 
-    // ‼️ Helper to get just the filename of the selected script
-    fn get_selected_filename(&self) -> Option<String> {
+    // ‼️ Helper to get just the filename *stem* of the selected script
+    fn get_selected_filename_stem(&self) -> Option<String> {
         self.list_state
             .selected()
             .and_then(|i| self.sql_files.get(i))
             .map(|p| {
                 Path::new(p)
-                    .file_name()
+                    .file_stem() // ‼️ Use file_stem()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string()
             })
     }
 
-    // ... (next, previous, update_preview remain the same) ...
     fn next(&mut self) {
         if self.sql_files.is_empty() {
             return;
@@ -205,7 +203,6 @@ impl App {
     }
 }
 
-// ... (execute_sql, open_editor, main remain the same) ...
 fn execute_sql(app: &mut App, db_path: &str) {
     if let Some(selected_index) = app.list_state.selected() {
         let file_path = &app.sql_files[selected_index];
@@ -407,26 +404,29 @@ fn run_app<B: Backend + io::Write>(
                         KeyCode::Char('a') => {
                             app.input_mode = InputMode::EditingFilename;
                             app.filename_input.clear();
+                            // ‼️ Updated prompt text
                             app.query_result =
-                                "Enter filename. Press [Enter] to confirm, [Esc] to cancel."
+                                "Enter new script name (no extension). Press [Enter] to confirm, [Esc] to cancel."
                                     .to_string();
                         }
                         KeyCode::Char('d') => {
                             if app.list_state.selected().is_some() {
                                 app.input_mode = InputMode::ConfirmingDelete;
-                                let filename = app.get_selected_filename().unwrap_or_default();
+                                // ‼️ Use helper to get stem
+                                let filename = app.get_selected_filename_stem().unwrap_or_default();
                                 app.query_result = format!("Delete '{}'? (y/n)", filename);
                             } else {
                                 app.query_result = "No script selected to delete.".to_string();
                             }
                         }
-                        // ‼️ New keybinding for 'r'
                         KeyCode::Char('r') => {
-                            if let Some(filename) = app.get_selected_filename() {
+                            // ‼️ Use helper to get stem
+                            if let Some(filename_stem) = app.get_selected_filename_stem() {
                                 app.input_mode = InputMode::RenamingScript;
-                                app.filename_input = filename; // ‼️ Pre-populate input
+                                app.filename_input = filename_stem; // Pre-populate with stem
+                                                                    // ‼️ Updated prompt text
                                 app.query_result =
-                                    "Enter new filename. Press [Enter] to confirm, [Esc] to cancel."
+                                    "Enter new script name (no extension). Press [Enter] to confirm, [Esc] to cancel."
                                         .to_string();
                             } else {
                                 app.query_result = "No script selected to rename.".to_string();
@@ -437,17 +437,14 @@ fn run_app<B: Backend + io::Write>(
 
                     InputMode::EditingFilename => match key.code {
                         KeyCode::Enter => {
-                            let filename = app.filename_input.trim();
-                            if filename.is_empty() {
+                            let filename_stem = app.filename_input.trim(); // ‼️ This is the stem
+                            if filename_stem.is_empty() {
                                 app.input_mode = InputMode::Normal;
                                 app.query_result = "New script cancelled.".to_string();
                             } else {
                                 let mut new_file_path = script_dir_path.to_path_buf();
-                                if !filename.ends_with(".sql") {
-                                    new_file_path.push(format!("{}.sql", filename));
-                                } else {
-                                    new_file_path.push(filename);
-                                }
+                                // ‼️ Add .sql extension manually
+                                new_file_path.push(format!("{}.sql", filename_stem));
 
                                 if new_file_path.exists() {
                                     app.query_result = format!(
@@ -532,29 +529,23 @@ fn run_app<B: Backend + io::Write>(
                         _ => {}
                     },
 
-                    // ‼️ New match arm for RenamingScript mode
                     InputMode::RenamingScript => match key.code {
                         KeyCode::Enter => {
-                            let new_filename = app.filename_input.trim();
-                            if new_filename.is_empty() {
+                            let new_filename_stem = app.filename_input.trim(); // ‼️ This is the stem
+                            if new_filename_stem.is_empty() {
                                 app.input_mode = InputMode::Normal;
                                 app.query_result = "Rename cancelled.".to_string();
                             } else {
-                                // Ensure we have a selected file to rename
                                 if let Some(selected_index) = app.list_state.selected() {
                                     if let Some(old_path_str) = app.sql_files.get(selected_index) {
                                         let old_path = Path::new(old_path_str);
 
-                                        // Construct new path
                                         let mut new_path = old_path
                                             .parent()
                                             .unwrap_or(script_dir_path)
                                             .to_path_buf();
-                                        if !new_filename.ends_with(".sql") {
-                                            new_path.push(format!("{}.sql", new_filename));
-                                        } else {
-                                            new_path.push(new_filename);
-                                        }
+                                        // ‼️ Add .sql extension manually
+                                        new_path.push(format!("{}.sql", new_filename_stem));
 
                                         if new_path.exists() {
                                             app.query_result = format!(
@@ -562,14 +553,12 @@ fn run_app<B: Backend + io::Write>(
                                                 new_path.display()
                                             );
                                         } else {
-                                            // Perform rename
                                             match fs::rename(old_path, &new_path) {
                                                 Ok(_) => {
                                                     app.query_result = "File renamed.".to_string();
                                                     let new_path_str =
                                                         new_path.to_string_lossy().to_string();
 
-                                                    // Rescan and select new file
                                                     app.rescan_scripts(script_dir_path)?;
                                                     if let Some(new_index) = app
                                                         .sql_files
@@ -624,17 +613,18 @@ fn ui(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
         .split(f.area());
 
-    // ... (Left Pane and Right Panes rendering are the same) ...
+    // --- Left Pane: SQL File List ---
     let items: Vec<ListItem> = app
         .sql_files
         .iter()
         .map(|full_path| {
-            let filename = Path::new(full_path)
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new("invalid_filename"))
+            // ‼️ Get just the filename stem for display
+            let filename_stem = Path::new(full_path)
+                .file_stem() // ‼️ Use file_stem()
+                .unwrap_or_else(|| OsStr::new("invalid_filename"))
                 .to_string_lossy()
                 .to_string();
-            ListItem::new(filename)
+            ListItem::new(filename_stem) // ‼️ Use the stem
         })
         .collect();
 
@@ -649,15 +639,18 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     f.render_stateful_widget(list, chunks[0], &mut app.list_state);
 
+    // --- Right Panes (Vertically Split) ---
     let right_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(40), Constraint::Percentage(60)].as_ref())
         .split(chunks[1]);
 
+    // Top-Right Pane: Script Preview
     let preview_block = Block::default().borders(Borders::ALL).title("Preview");
     let preview_text = Paragraph::new(app.script_content_preview.as_str()).block(preview_block);
     f.render_widget(preview_text, right_chunks[0]);
 
+    // Bottom-Right Pane: Query Results
     let results_block = Block::default().borders(Borders::ALL).title("Results");
     let results_text = Paragraph::new(app.query_result.as_str()).block(results_block);
     f.render_widget(results_text, right_chunks[1]);
@@ -667,7 +660,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         let area = centered_rect(50, 3, f.area());
         let input_text = format!("{}_", app.filename_input);
         let popup_block = Block::default()
-            .title("New Script Name")
+            .title("New Script Name (no .sql)") // ‼️ Updated title
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::LightBlue));
 
@@ -687,15 +680,13 @@ fn ui(f: &mut Frame, app: &mut App) {
 
         f.render_widget(Clear, area);
         f.render_widget(popup_paragraph, area);
-
-    // ‼️ New popup for renaming
     } else if app.input_mode == InputMode::RenamingScript {
         let area = centered_rect(50, 3, f.area());
         let input_text = format!("{}_", app.filename_input);
         let popup_block = Block::default()
-            .title("Rename Script")
+            .title("Rename Script (no .sql)") // ‼️ Updated title
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::LightYellow).fg(Color::Black)); // ‼️ Yellow bg
+            .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
 
         let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
         f.render_widget(Clear, area);
@@ -703,7 +694,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     }
 }
 
-// ... (centered_rect remains the same) ...
+/// Helper function to create a centered rectangle for popups
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
     let (top_padding, bottom_padding) = {
         let total_padding = r.height.saturating_sub(height);
