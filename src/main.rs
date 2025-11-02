@@ -13,10 +13,10 @@ use ratatui::{
 use rusqlite::{Connection, Error as RusqliteError};
 use serde::Deserialize;
 use std::{
-    ffi::OsStr, // ‼️ Import OsStr
+    ffi::OsStr,
     fs::{self},
-    io::{self, stdout}, // ‼️ Removed Write
-    path::Path,         // ‼️ Removed PathBuf
+    io::{self, stdout},
+    path::Path,
     process::Command,
 };
 
@@ -143,14 +143,13 @@ impl App {
         Ok(())
     }
 
-    // ‼️ Helper to get just the filename *stem* of the selected script
     fn get_selected_filename_stem(&self) -> Option<String> {
         self.list_state
             .selected()
             .and_then(|i| self.sql_files.get(i))
             .map(|p| {
                 Path::new(p)
-                    .file_stem() // ‼️ Use file_stem()
+                    .file_stem()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string()
@@ -423,8 +422,7 @@ fn run_app<B: Backend + io::Write>(
                             // ‼️ Use helper to get stem
                             if let Some(filename_stem) = app.get_selected_filename_stem() {
                                 app.input_mode = InputMode::RenamingScript;
-                                app.filename_input = filename_stem; // Pre-populate with stem
-                                                                    // ‼️ Updated prompt text
+                                app.filename_input = filename_stem;
                                 app.query_result =
                                     "Enter new script name (no extension). Press [Enter] to confirm, [Esc] to cancel."
                                         .to_string();
@@ -437,7 +435,7 @@ fn run_app<B: Backend + io::Write>(
 
                     InputMode::EditingFilename => match key.code {
                         KeyCode::Enter => {
-                            let filename_stem = app.filename_input.trim(); // ‼️ This is the stem
+                            let filename_stem = app.filename_input.trim();
                             if filename_stem.is_empty() {
                                 app.input_mode = InputMode::Normal;
                                 app.query_result = "New script cancelled.".to_string();
@@ -531,7 +529,7 @@ fn run_app<B: Backend + io::Write>(
 
                     InputMode::RenamingScript => match key.code {
                         KeyCode::Enter => {
-                            let new_filename_stem = app.filename_input.trim(); // ‼️ This is the stem
+                            let new_filename_stem = app.filename_input.trim();
                             if new_filename_stem.is_empty() {
                                 app.input_mode = InputMode::Normal;
                                 app.query_result = "Rename cancelled.".to_string();
@@ -618,13 +616,12 @@ fn ui(f: &mut Frame, app: &mut App) {
         .sql_files
         .iter()
         .map(|full_path| {
-            // ‼️ Get just the filename stem for display
             let filename_stem = Path::new(full_path)
-                .file_stem() // ‼️ Use file_stem()
+                .file_stem()
                 .unwrap_or_else(|| OsStr::new("invalid_filename"))
                 .to_string_lossy()
                 .to_string();
-            ListItem::new(filename_stem) // ‼️ Use the stem
+            ListItem::new(filename_stem)
         })
         .collect();
 
@@ -660,7 +657,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         let area = centered_rect(50, 3, f.area());
         let input_text = format!("{}_", app.filename_input);
         let popup_block = Block::default()
-            .title("New Script Name (no .sql)") // ‼️ Updated title
+            .title("New Script Name (no .sql)")
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::LightBlue));
 
@@ -684,7 +681,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         let area = centered_rect(50, 3, f.area());
         let input_text = format!("{}_", app.filename_input);
         let popup_block = Block::default()
-            .title("Rename Script (no .sql)") // ‼️ Updated title
+            .title("Rename Script")
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
 
