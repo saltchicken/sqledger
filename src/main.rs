@@ -72,13 +72,31 @@ struct App {
 impl App {
     /// Creates a new App, scanning the configured script directory for .sql files
     fn new(script_dir_path: &Path, db_path: &Path) -> io::Result<Self> {
-        let mut sql_files = Vec::new();
+        // ‼️ Updated welcome message
+        let welcome_message = format!(
+            "Welcome!\n\nLoading scripts from: {}\nLoading database from: {}\n\nPress 'j'/'k' to navigate.\nPress 'l' or 'Enter' to run.\nPress 'e' to edit.\nPress 'a' to add new script.\nPress 'q' to quit.",
+            script_dir_path.display(),
+            db_path.display()
+        );
 
-        // Read from the configured script directory
+        let mut app = Self {
+            sql_files: Vec::new(),
+            list_state: ListState::default(),
+            query_result: welcome_message,
+            script_content_preview: "".to_string(), // ‼️ Will be set by rescan
+        };
+
+        app.rescan_scripts(script_dir_path)?; // ‼️ This populates list and preview
+
+        Ok(app)
+    }
+
+    // ‼️ New function to rescan the script directory
+    fn rescan_scripts(&mut self, script_dir_path: &Path) -> io::Result<()> {
+        let mut sql_files = Vec::new();
         let script_dir_entries = match fs::read_dir(script_dir_path) {
             Ok(entries) => entries,
             Err(e) => {
-                // If dir doesn't exist, return error but with a helpful message
                 return Err(io::Error::new(
                     e.kind(),
                     format!(
@@ -100,29 +118,26 @@ impl App {
         );
         sql_files.sort();
 
-        let mut list_state = ListState::default();
-        let mut script_content_preview = "No SQL files found.".to_string();
+        self.sql_files = sql_files;
 
-        if !sql_files.is_empty() {
-            list_state.select(Some(0));
-            // Load initial preview
-            script_content_preview = fs::read_to_string(&sql_files[0])
-                .unwrap_or_else(|e| format!("Error reading file: {}", e));
+        // Preserve selection if possible
+        let mut valid_selection_exists = false;
+        if let Some(selected_index) = self.list_state.selected() {
+            if selected_index < self.sql_files.len() {
+                valid_selection_exists = true;
+            }
         }
 
-        // Updated welcome message
-        let welcome_message = format!(
-            "Welcome!\n\nLoading scripts from: {}\nLoading database from: {}\n\nPress 'j'/'k' to navigate.\nPress 'l' or 'Enter' to run.\nPress 'e' to edit.\nPress 'q' to quit.",
-            script_dir_path.display(),
-            db_path.display()
-        );
+        if !valid_selection_exists {
+            if !self.sql_files.is_empty() {
+                self.list_state.select(Some(0));
+            } else {
+                self.list_state.select(None);
+            }
+        }
 
-        Ok(Self {
-            sql_files,
-            list_state,
-            query_result: welcome_message,
-            script_content_preview,
-        })
+        self.update_preview();
+        Ok(())
     }
 
     /// Selects the next item in the list
@@ -164,6 +179,9 @@ impl App {
                 self.script_content_preview = fs::read_to_string(file_path)
                     .unwrap_or_else(|e| format!("Error reading file {}: {}", file_path, e));
             }
+        } else {
+            // ‼️ Handle no selection
+            self.script_content_preview = "No SQL files found.".to_string();
         }
     }
 }
@@ -181,7 +199,6 @@ fn execute_sql(app: &mut App, db_path: &str) {
                         return;
                     }
                 };
-
                 // Trim whitespace and check if it's a SELECT query
                 let trimmed_sql = sql_content.trim();
                 if trimmed_sql.to_uppercase().starts_with("SELECT")
@@ -260,6 +277,36 @@ fn execute_sql(app: &mut App, db_path: &str) {
     }
 }
 
+// ‼️ New helper function to suspend TUI and open editor
+fn open_editor<B: Backend + io::Write>(
+    terminal: &mut Terminal<B>,
+    file_path: &Path,
+) -> io::Result<bool> {
+    // Suspend TUI
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
+
+    // Run nvim
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nvim".to_string());
+    let status = Command::new(editor).arg(file_path).status()?;
+
+    // Resume TUI
+    enable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        EnterAlternateScreen,
+        EnableMouseCapture
+    )?;
+    terminal.clear()?; // Redraw entire TUI
+
+    Ok(status.success())
+}
+
 /// Main function to set up and run the TUI
 fn main() -> io::Result<()> {
     // Create config dir and default scripts dir if they don't exist
@@ -282,6 +329,7 @@ fn main() -> io::Result<()> {
     let config = load_config(&config_path);
     let script_dir_path_str = shellexpand::tilde(&config.script_directory).to_string();
     let script_dir_path = Path::new(&script_dir_path_str).to_path_buf();
+
     // Create script dir if it doesn't exist
     fs::create_dir_all(&script_dir_path)?;
 
@@ -310,7 +358,8 @@ fn main() -> io::Result<()> {
 
     // Create app and run it
     let mut app = App::new(&script_dir_path, &db_path)?;
-    let res = run_app(&mut terminal, &mut app, &db_path);
+    // ‼️ Pass script_dir_path to run_app
+    let res = run_app(&mut terminal, &mut app, &db_path, &script_dir_path);
 
     // Restore terminal
     disable_raw_mode()?;
@@ -333,6 +382,7 @@ fn run_app<B: Backend + io::Write>(
     terminal: &mut Terminal<B>,
     app: &mut App,
     db_path: &Path,
+    script_dir_path: &Path, // ‼️ New parameter
 ) -> io::Result<()> {
     loop {
         terminal.draw(|f| ui(f, app))?;
@@ -347,38 +397,53 @@ fn run_app<B: Backend + io::Write>(
                         execute_sql(app, &db_path.to_string_lossy())
                     }
                     KeyCode::Char('e') => {
-                        // Logic to open editor
+                        // ‼️ Logic to open editor
                         if let Some(selected_index) = app.list_state.selected() {
-                            if let Some(file_path) = app.sql_files.get(selected_index) {
-                                // Suspend TUI
-                                disable_raw_mode()?;
-                                execute!(
-                                    terminal.backend_mut(),
-                                    LeaveAlternateScreen,
-                                    DisableMouseCapture
-                                )?;
-                                terminal.show_cursor()?;
+                            if let Some(file_path_str) = app.sql_files.get(selected_index) {
+                                let file_path = Path::new(file_path_str); // ‼️ Convert to Path
 
-                                // Run nvim
-                                let editor =
-                                    std::env::var("EDITOR").unwrap_or_else(|_| "nvim".to_string());
-                                let status = Command::new(editor).arg(file_path).status()?;
+                                // ‼️ Call helper function
+                                let success = open_editor(terminal, file_path)?;
 
-                                // Resume TUI
-                                enable_raw_mode()?;
-                                execute!(
-                                    terminal.backend_mut(),
-                                    EnterAlternateScreen,
-                                    EnableMouseCapture
-                                )?;
-                                terminal.clear()?; // Redraw entire TUI
-
-                                if !status.success() {
+                                if !success {
                                     app.query_result = "Editor exited with an error.".to_string();
                                 }
-                                // Refresh preview in case file was changed
-                                app.update_preview();
+
+                                // ‼️ Rescan files and update preview
+                                app.rescan_scripts(script_dir_path)?;
                             }
+                        }
+                    }
+                    // ‼️ New handler for 'a'
+                    KeyCode::Char('a') => {
+                        // 1. Generate a new, unique file name.
+                        let timestamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        let new_file_name = format!("{}_new_script.sql", timestamp);
+                        let new_file_path = script_dir_path.join(new_file_name);
+                        let new_file_path_str = new_file_path.to_string_lossy().to_string();
+
+                        // 2. Create an empty file.
+                        fs::write(&new_file_path, "-- New SQL Script\n")?;
+
+                        // 3. Open it in the editor.
+                        let success = open_editor(terminal, &new_file_path)?;
+
+                        if !success {
+                            app.query_result = "Editor exited with an error.".to_string();
+                        }
+
+                        // 4. Rescan the file list.
+                        app.rescan_scripts(script_dir_path)?;
+
+                        // 5. Try to select the new file.
+                        if let Some(new_index) =
+                            app.sql_files.iter().position(|p| p == &new_file_path_str)
+                        {
+                            app.list_state.select(Some(new_index));
+                            app.update_preview(); // ‼️ Manually update preview after selection
                         }
                     }
                     _ => {}
