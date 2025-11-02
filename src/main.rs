@@ -14,8 +14,8 @@ use rusqlite::{Connection, Error as RusqliteError};
 use serde::Deserialize;
 use std::{
     fs::{self},
-    io::{self, stdout},
-    path::Path,
+    io::{self, stdout, Write}, // ‼️ Import Write
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -72,7 +72,6 @@ struct App {
 impl App {
     /// Creates a new App, scanning the configured script directory for .sql files
     fn new(script_dir_path: &Path, db_path: &Path) -> io::Result<Self> {
-        // ‼️ Updated welcome message
         let welcome_message = format!(
             "Welcome!\n\nLoading scripts from: {}\nLoading database from: {}\n\nPress 'j'/'k' to navigate.\nPress 'l' or 'Enter' to run.\nPress 'e' to edit.\nPress 'a' to add new script.\nPress 'q' to quit.",
             script_dir_path.display(),
@@ -83,15 +82,14 @@ impl App {
             sql_files: Vec::new(),
             list_state: ListState::default(),
             query_result: welcome_message,
-            script_content_preview: "".to_string(), // ‼️ Will be set by rescan
+            script_content_preview: "".to_string(),
         };
 
-        app.rescan_scripts(script_dir_path)?; // ‼️ This populates list and preview
+        app.rescan_scripts(script_dir_path)?;
 
         Ok(app)
     }
 
-    // ‼️ New function to rescan the script directory
     fn rescan_scripts(&mut self, script_dir_path: &Path) -> io::Result<()> {
         let mut sql_files = Vec::new();
         let script_dir_entries = match fs::read_dir(script_dir_path) {
@@ -180,7 +178,6 @@ impl App {
                     .unwrap_or_else(|e| format!("Error reading file {}: {}", file_path, e));
             }
         } else {
-            // ‼️ Handle no selection
             self.script_content_preview = "No SQL files found.".to_string();
         }
     }
@@ -199,15 +196,12 @@ fn execute_sql(app: &mut App, db_path: &str) {
                         return;
                     }
                 };
-                // Trim whitespace and check if it's a SELECT query
                 let trimmed_sql = sql_content.trim();
                 if trimmed_sql.to_uppercase().starts_with("SELECT")
                     || trimmed_sql.to_uppercase().starts_with("PRAGMA")
                 {
-                    // It's a query, try to get results
                     match (|| -> Result<String, RusqliteError> {
                         let mut stmt = conn.prepare(&sql_content)?;
-                        // Clone column names to own the data and end the immutable borrow of `stmt`
                         let column_names: Vec<String> =
                             stmt.column_names().iter().map(|s| s.to_string()).collect();
                         let mut widths: Vec<usize> = column_names.iter().map(|s| s.len()).collect();
@@ -227,20 +221,16 @@ fn execute_sql(app: &mut App, db_path: &str) {
                             rows_data.push(row_result?);
                         }
 
-                        // Format the output
                         let mut output = String::new();
-                        // Header
                         for (i, name) in column_names.iter().enumerate() {
                             output.push_str(&format!("{:<width$} | ", name, width = widths[i]));
                         }
                         output.push('\n');
-                        // Separator
                         for width in &widths {
                             output.push_str(&"-".repeat(*width));
                             output.push_str("---");
                         }
                         output.push('\n');
-                        // Rows
                         for row in rows_data {
                             for (i, value) in row.iter().enumerate() {
                                 output.push_str(&format!(
@@ -257,7 +247,6 @@ fn execute_sql(app: &mut App, db_path: &str) {
                         Err(e) => app.query_result = format!("Error executing query: {}", e),
                     }
                 } else {
-                    // It's an execute (INSERT, UPDATE, CREATE, etc.)
                     match conn.execute_batch(&sql_content) {
                         Ok(_) => {
                             let changes = conn.total_changes();
@@ -277,7 +266,53 @@ fn execute_sql(app: &mut App, db_path: &str) {
     }
 }
 
-// ‼️ New helper function to suspend TUI and open editor
+// ‼️ New helper function to suspend TUI and prompt for a filename
+fn prompt_for_filename<B: Backend + io::Write>(
+    terminal: &mut Terminal<B>,
+    script_dir_path: &Path,
+) -> io::Result<Option<PathBuf>> {
+    // Suspend TUI
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
+
+    // Prompt and read
+    print!("Enter new script name (in {}): ", script_dir_path.display());
+    io::stdout().flush()?; // Ensure prompt is displayed
+    let mut filename = String::new();
+    io::stdin().read_line(&mut filename)?;
+    let filename = filename.trim();
+
+    // Construct path
+    let new_path = if filename.is_empty() {
+        None // User cancelled
+    } else {
+        let mut full_path = script_dir_path.to_path_buf();
+        // Ensure it ends with .sql
+        if !filename.ends_with(".sql") {
+            full_path.push(format!("{}.sql", filename));
+        } else {
+            full_path.push(filename);
+        }
+        Some(full_path)
+    };
+
+    // Resume TUI
+    enable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        EnterAlternateScreen,
+        EnableMouseCapture
+    )?;
+    terminal.clear()?;
+
+    Ok(new_path)
+}
+
 fn open_editor<B: Backend + io::Write>(
     terminal: &mut Terminal<B>,
     file_path: &Path,
@@ -309,33 +344,27 @@ fn open_editor<B: Backend + io::Write>(
 
 /// Main function to set up and run the TUI
 fn main() -> io::Result<()> {
-    // Create config dir and default scripts dir if they don't exist
     let config_dir_path = dirs::config_dir()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Could not find config directory"))?
         .join(CONFIG_DIR_NAME);
 
-    // Get data dir path (e.g., ~/.local/share/sqledger)
     let data_dir_path = dirs::data_dir()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Could not find data directory"))?
         .join(CONFIG_DIR_NAME);
 
-    // Create both directories
     fs::create_dir_all(&config_dir_path)?;
     fs::create_dir_all(&data_dir_path)?;
 
     let config_path = config_dir_path.join(CONFIG_FILE_NAME);
 
-    // Load config to get script directory
     let config = load_config(&config_path);
     let script_dir_path_str = shellexpand::tilde(&config.script_directory).to_string();
     let script_dir_path = Path::new(&script_dir_path_str).to_path_buf();
 
-    // Create script dir if it doesn't exist
     fs::create_dir_all(&script_dir_path)?;
 
     let db_path = data_dir_path.join(DB_NAME);
 
-    // Create dummy config if it doesn't exist
     if !config_path.exists() {
         fs::write(
             &config_path,
@@ -343,25 +372,20 @@ fn main() -> io::Result<()> {
         )?;
     }
 
-    // Create dummy DB
     if !db_path.exists() {
         let conn = Connection::open(&db_path).expect("Failed to create dummy DB");
         conn.execute_batch("").expect("Failed to open dummy DB");
     }
 
-    // Set up the terminal
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Create app and run it
     let mut app = App::new(&script_dir_path, &db_path)?;
-    // ‼️ Pass script_dir_path to run_app
     let res = run_app(&mut terminal, &mut app, &db_path, &script_dir_path);
 
-    // Restore terminal
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -382,7 +406,7 @@ fn run_app<B: Backend + io::Write>(
     terminal: &mut Terminal<B>,
     app: &mut App,
     db_path: &Path,
-    script_dir_path: &Path, // ‼️ New parameter
+    script_dir_path: &Path,
 ) -> io::Result<()> {
     loop {
         terminal.draw(|f| ui(f, app))?;
@@ -397,53 +421,55 @@ fn run_app<B: Backend + io::Write>(
                         execute_sql(app, &db_path.to_string_lossy())
                     }
                     KeyCode::Char('e') => {
-                        // ‼️ Logic to open editor
                         if let Some(selected_index) = app.list_state.selected() {
                             if let Some(file_path_str) = app.sql_files.get(selected_index) {
-                                let file_path = Path::new(file_path_str); // ‼️ Convert to Path
-
-                                // ‼️ Call helper function
+                                let file_path = Path::new(file_path_str);
                                 let success = open_editor(terminal, file_path)?;
 
                                 if !success {
                                     app.query_result = "Editor exited with an error.".to_string();
                                 }
-
-                                // ‼️ Rescan files and update preview
                                 app.rescan_scripts(script_dir_path)?;
                             }
                         }
                     }
-                    // ‼️ New handler for 'a'
                     KeyCode::Char('a') => {
-                        // 1. Generate a new, unique file name.
-                        let timestamp = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_secs())
-                            .unwrap_or(0);
-                        let new_file_name = format!("{}_new_script.sql", timestamp);
-                        let new_file_path = script_dir_path.join(new_file_name);
-                        let new_file_path_str = new_file_path.to_string_lossy().to_string();
-
-                        // 2. Create an empty file.
-                        fs::write(&new_file_path, "-- New SQL Script\n")?;
-
-                        // 3. Open it in the editor.
-                        let success = open_editor(terminal, &new_file_path)?;
-
-                        if !success {
-                            app.query_result = "Editor exited with an error.".to_string();
-                        }
-
-                        // 4. Rescan the file list.
-                        app.rescan_scripts(script_dir_path)?;
-
-                        // 5. Try to select the new file.
-                        if let Some(new_index) =
-                            app.sql_files.iter().position(|p| p == &new_file_path_str)
+                        // ‼️ 1. Prompt for filename
+                        if let Some(new_file_path) = prompt_for_filename(terminal, script_dir_path)?
                         {
-                            app.list_state.select(Some(new_index));
-                            app.update_preview(); // ‼️ Manually update preview after selection
+                            // ‼️ 1b. Check if file already exists
+                            if new_file_path.exists() {
+                                app.query_result = format!(
+                                    "Error: File {} already exists.",
+                                    new_file_path.display()
+                                );
+                            } else {
+                                let new_file_path_str = new_file_path.to_string_lossy().to_string();
+
+                                // ‼️ 2. Create an empty file.
+                                fs::write(&new_file_path, "-- New SQL Script\n")?;
+
+                                // ‼️ 3. Open it in the editor.
+                                let success = open_editor(terminal, &new_file_path)?;
+
+                                if !success {
+                                    app.query_result = "Editor exited with an error.".to_string();
+                                }
+
+                                // ‼️ 4. Rescan the file list.
+                                app.rescan_scripts(script_dir_path)?;
+
+                                // ‼️ 5. Try to select the new file.
+                                if let Some(new_index) =
+                                    app.sql_files.iter().position(|p| p == &new_file_path_str)
+                                {
+                                    app.list_state.select(Some(new_index));
+                                    app.update_preview();
+                                }
+                            }
+                        } else {
+                            // User cancelled, do nothing
+                            app.query_result = "New script cancelled.".to_string();
                         }
                     }
                     _ => {}
@@ -455,7 +481,6 @@ fn run_app<B: Backend + io::Write>(
 
 /// Renders the user interface
 fn ui(f: &mut Frame, app: &mut App) {
-    // Create two panes: 30% left, 70% right
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
@@ -466,7 +491,6 @@ fn ui(f: &mut Frame, app: &mut App) {
         .sql_files
         .iter()
         .map(|full_path| {
-            // Get just the filename for display
             let filename = Path::new(full_path)
                 .file_name()
                 .unwrap_or_else(|| std::ffi::OsStr::new("invalid_filename"))
@@ -485,11 +509,9 @@ fn ui(f: &mut Frame, app: &mut App) {
         )
         .highlight_symbol(">> ");
 
-    // Use `&mut` to render the stateful widget
     f.render_stateful_widget(list, chunks[0], &mut app.list_state);
 
     // --- Right Panes (Vertically Split) ---
-    // Split right pane: 40% top (preview), 60% bottom (results)
     let right_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(40), Constraint::Percentage(60)].as_ref())
