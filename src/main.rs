@@ -5,17 +5,17 @@ use crossterm::{
 };
 use ratatui::{
     backend::Backend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
 use rusqlite::{Connection, Error as RusqliteError};
 use serde::Deserialize;
 use std::{
     fs::{self},
-    io::{self, stdout, Write}, // ‼️ Import Write
-    path::{Path, PathBuf},
+    io::{self, stdout},
+    path::Path,
     process::Command,
 };
 
@@ -23,6 +23,12 @@ const DB_NAME: &str = "scripts.db";
 const CONFIG_DIR_NAME: &str = "sqledger";
 const CONFIG_FILE_NAME: &str = "config.toml";
 const DEFAULT_SCRIPTS_DIR: &str = "~/.config/sqledger/scripts";
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum InputMode {
+    Normal,
+    EditingFilename,
+}
 
 // Configuration struct
 #[derive(Deserialize, Debug)]
@@ -48,7 +54,6 @@ impl Default for Config {
 // Function to load configuration
 fn load_config(config_path: &Path) -> Config {
     if let Ok(content) = fs::read_to_string(config_path) {
-        // Try to parse, fall back to default on error
         return toml::from_str(&content).unwrap_or_else(|e| {
             println!(
                 "Failed to parse config file at {:?}: {}, using default.",
@@ -57,7 +62,6 @@ fn load_config(config_path: &Path) -> Config {
             Config::default()
         });
     }
-    // No config file found, return default
     Config::default()
 }
 
@@ -67,6 +71,8 @@ struct App {
     list_state: ListState,
     query_result: String,
     script_content_preview: String,
+    input_mode: InputMode,
+    filename_input: String,
 }
 
 impl App {
@@ -83,6 +89,8 @@ impl App {
             list_state: ListState::default(),
             query_result: welcome_message,
             script_content_preview: "".to_string(),
+            input_mode: InputMode::Normal,
+            filename_input: String::new(),
         };
 
         app.rescan_scripts(script_dir_path)?;
@@ -118,7 +126,6 @@ impl App {
 
         self.sql_files = sql_files;
 
-        // Preserve selection if possible
         let mut valid_selection_exists = false;
         if let Some(selected_index) = self.list_state.selected() {
             if selected_index < self.sql_files.len() {
@@ -138,7 +145,6 @@ impl App {
         Ok(())
     }
 
-    /// Selects the next item in the list
     fn next(&mut self) {
         let i = match self.list_state.selected() {
             Some(i) => {
@@ -154,7 +160,6 @@ impl App {
         self.update_preview();
     }
 
-    /// Selects the previous item in the list
     fn previous(&mut self) {
         let i = match self.list_state.selected() {
             Some(i) => {
@@ -170,7 +175,6 @@ impl App {
         self.update_preview();
     }
 
-    /// Updates the script content preview based on the selected file
     fn update_preview(&mut self) {
         if let Some(selected_index) = self.list_state.selected() {
             if let Some(file_path) = self.sql_files.get(selected_index) {
@@ -266,12 +270,10 @@ fn execute_sql(app: &mut App, db_path: &str) {
     }
 }
 
-// ‼️ New helper function to suspend TUI and prompt for a filename
-fn prompt_for_filename<B: Backend + io::Write>(
+fn open_editor<B: Backend + io::Write>(
     terminal: &mut Terminal<B>,
-    script_dir_path: &Path,
-) -> io::Result<Option<PathBuf>> {
-    // Suspend TUI
+    file_path: &Path,
+) -> io::Result<bool> {
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -280,28 +282,9 @@ fn prompt_for_filename<B: Backend + io::Write>(
     )?;
     terminal.show_cursor()?;
 
-    // Prompt and read
-    print!("Enter new script name (in {}): ", script_dir_path.display());
-    io::stdout().flush()?; // Ensure prompt is displayed
-    let mut filename = String::new();
-    io::stdin().read_line(&mut filename)?;
-    let filename = filename.trim();
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nvim".to_string());
+    let status = Command::new(editor).arg(file_path).status()?;
 
-    // Construct path
-    let new_path = if filename.is_empty() {
-        None // User cancelled
-    } else {
-        let mut full_path = script_dir_path.to_path_buf();
-        // Ensure it ends with .sql
-        if !filename.ends_with(".sql") {
-            full_path.push(format!("{}.sql", filename));
-        } else {
-            full_path.push(filename);
-        }
-        Some(full_path)
-    };
-
-    // Resume TUI
     enable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -309,35 +292,6 @@ fn prompt_for_filename<B: Backend + io::Write>(
         EnableMouseCapture
     )?;
     terminal.clear()?;
-
-    Ok(new_path)
-}
-
-fn open_editor<B: Backend + io::Write>(
-    terminal: &mut Terminal<B>,
-    file_path: &Path,
-) -> io::Result<bool> {
-    // Suspend TUI
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-
-    // Run nvim
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nvim".to_string());
-    let status = Command::new(editor).arg(file_path).status()?;
-
-    // Resume TUI
-    enable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        EnterAlternateScreen,
-        EnableMouseCapture
-    )?;
-    terminal.clear()?; // Redraw entire TUI
 
     Ok(status.success())
 }
@@ -413,66 +367,118 @@ fn run_app<B: Backend + io::Write>(
 
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
-                match key.code {
-                    KeyCode::Char('q') => return Ok(()),
-                    KeyCode::Char('j') | KeyCode::Down => app.next(),
-                    KeyCode::Char('k') | KeyCode::Up => app.previous(),
-                    KeyCode::Char('l') | KeyCode::Enter => {
-                        execute_sql(app, &db_path.to_string_lossy())
-                    }
-                    KeyCode::Char('e') => {
-                        if let Some(selected_index) = app.list_state.selected() {
-                            if let Some(file_path_str) = app.sql_files.get(selected_index) {
-                                let file_path = Path::new(file_path_str);
-                                let success = open_editor(terminal, file_path)?;
+                // ‼️ Split event handling based on the current input mode
+                match app.input_mode {
+                    // ‼️ Normal mode: handles list navigation, quitting, editing
+                    InputMode::Normal => match key.code {
+                        KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('j') | KeyCode::Down => app.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.previous(),
+                        KeyCode::Char('l') | KeyCode::Enter => {
+                            execute_sql(app, &db_path.to_string_lossy())
+                        }
+                        KeyCode::Char('e') => {
+                            if let Some(selected_index) = app.list_state.selected() {
+                                if let Some(file_path_str) = app.sql_files.get(selected_index) {
+                                    let file_path = Path::new(file_path_str);
+                                    let success = open_editor(terminal, file_path)?;
 
-                                if !success {
-                                    app.query_result = "Editor exited with an error.".to_string();
+                                    if !success {
+                                        app.query_result =
+                                            "Editor exited with an error.".to_string();
+                                    }
+                                    app.rescan_scripts(script_dir_path)?;
                                 }
-                                app.rescan_scripts(script_dir_path)?;
                             }
                         }
-                    }
-                    KeyCode::Char('a') => {
-                        // ‼️ 1. Prompt for filename
-                        if let Some(new_file_path) = prompt_for_filename(terminal, script_dir_path)?
-                        {
-                            // ‼️ 1b. Check if file already exists
-                            if new_file_path.exists() {
-                                app.query_result = format!(
-                                    "Error: File {} already exists.",
-                                    new_file_path.display()
-                                );
+                        // ‼️ 'a' now switches to EditingFilename mode
+                        KeyCode::Char('a') => {
+                            app.input_mode = InputMode::EditingFilename;
+                            app.filename_input.clear();
+                            app.query_result =
+                                "Enter filename. Press [Enter] to confirm, [Esc] to cancel."
+                                    .to_string();
+                        }
+                        _ => {}
+                    },
+
+                    // ‼️ Filename editing mode: handles text input
+                    InputMode::EditingFilename => match key.code {
+                        // ‼️ On Enter, create the file
+                        KeyCode::Enter => {
+                            let filename = app.filename_input.trim();
+                            if filename.is_empty() {
+                                app.input_mode = InputMode::Normal;
+                                app.query_result = "New script cancelled.".to_string();
                             } else {
-                                let new_file_path_str = new_file_path.to_string_lossy().to_string();
-
-                                // ‼️ 2. Create an empty file.
-                                fs::write(&new_file_path, "-- New SQL Script\n")?;
-
-                                // ‼️ 3. Open it in the editor.
-                                let success = open_editor(terminal, &new_file_path)?;
-
-                                if !success {
-                                    app.query_result = "Editor exited with an error.".to_string();
+                                // Construct path
+                                let mut new_file_path = script_dir_path.to_path_buf();
+                                if !filename.ends_with(".sql") {
+                                    new_file_path.push(format!("{}.sql", filename));
+                                } else {
+                                    new_file_path.push(filename);
                                 }
 
-                                // ‼️ 4. Rescan the file list.
-                                app.rescan_scripts(script_dir_path)?;
+                                if new_file_path.exists() {
+                                    app.query_result = format!(
+                                        "Error: File {} already exists.",
+                                        new_file_path.display()
+                                    );
+                                } else {
+                                    let new_file_path_str =
+                                        new_file_path.to_string_lossy().to_string();
 
-                                // ‼️ 5. Try to select the new file.
-                                if let Some(new_index) =
-                                    app.sql_files.iter().position(|p| p == &new_file_path_str)
-                                {
-                                    app.list_state.select(Some(new_index));
-                                    app.update_preview();
+                                    // Create, open, and rescan
+                                    fs::write(&new_file_path, "-- New SQL Script\n")?;
+                                    let success = open_editor(terminal, &new_file_path)?;
+
+                                    if !success {
+                                        app.query_result =
+                                            "Editor exited with an error.".to_string();
+                                    } else {
+                                        app.query_result = format!(
+                                            "Script {} created successfully.",
+                                            new_file_path.display()
+                                        );
+                                    }
+
+                                    app.rescan_scripts(script_dir_path)?;
+
+                                    // Try to select the new file
+                                    if let Some(new_index) =
+                                        app.sql_files.iter().position(|p| p == &new_file_path_str)
+                                    {
+                                        app.list_state.select(Some(new_index));
+                                        app.update_preview();
+                                    }
                                 }
+                                // ‼️ Return to normal mode
+                                app.input_mode = InputMode::Normal;
                             }
-                        } else {
-                            // User cancelled, do nothing
+                        }
+                        // ‼️ On Esc, cancel and return to normal mode
+                        KeyCode::Char('c')
+                            if key
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                        {
+                            app.input_mode = InputMode::Normal;
                             app.query_result = "New script cancelled.".to_string();
                         }
-                    }
-                    _ => {}
+                        KeyCode::Esc => {
+                            app.input_mode = InputMode::Normal;
+                            app.query_result = "New script cancelled.".to_string();
+                        }
+                        // ‼️ On Backspace, remove a character
+                        KeyCode::Backspace => {
+                            app.filename_input.pop();
+                        }
+                        // ‼️ On Char, add a character
+                        KeyCode::Char(c) => {
+                            app.filename_input.push(c);
+                        }
+                        _ => {}
+                    },
                 }
             }
         }
@@ -481,6 +487,7 @@ fn run_app<B: Backend + io::Write>(
 
 /// Renders the user interface
 fn ui(f: &mut Frame, app: &mut App) {
+    // --- Main Layout ---
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
@@ -526,4 +533,44 @@ fn ui(f: &mut Frame, app: &mut App) {
     let results_block = Block::default().borders(Borders::ALL).title("Results");
     let results_text = Paragraph::new(app.query_result.as_str()).block(results_block);
     f.render_widget(results_text, right_chunks[1]);
+
+    // ‼️ --- Popup Window (if in EditingFilename mode) ---
+    if app.input_mode == InputMode::EditingFilename {
+        // ‼️ Create a 50% wide, 3-line high popup in the center
+        let area = centered_rect(50, 3, f.area());
+
+        // ‼️ Add a simple cursor
+        let input_text = format!("{}_", app.filename_input);
+
+        let popup_block = Block::default()
+            .title("New Script Name")
+            .borders(Borders::ALL);
+        // .style(Style::default().bg(Color::DarkGray)); // ‼️ Give it a background
+
+        let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
+
+        // ‼️ Use Clear to render the popup *over* the existing UI
+        f.render_widget(Clear, area);
+        f.render_widget(input_paragraph, area);
+    }
+}
+
+fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - (height * 100 / r.height)) / 2),
+            Constraint::Length(height),
+            Constraint::Percentage((100 - (height * 100 / r.height)) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
