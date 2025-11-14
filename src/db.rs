@@ -11,7 +11,7 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                 let mut client = match Client::connect(db_url, NoTls) {
                     Ok(client) => client,
                     Err(e) => {
-                        // ‼️ Use new method to set result and reset scroll
+
                         app.set_query_result(format!("Error connecting to database: {}", e));
                         return;
                     }

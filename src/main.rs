@@ -3,7 +3,6 @@ mod config;
 mod db;
 mod editor;
 mod ui;
-
 use crate::{
     app::{App, InputMode},
     config::{load_config, CONFIG_DIR_NAME, CONFIG_FILE_NAME},
@@ -11,7 +10,7 @@ use crate::{
     editor::open_editor,
     ui::ui,
 };
-use arboard::Clipboard;
+
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
     execute,
@@ -20,10 +19,10 @@ use crossterm::{
 use ratatui::{backend::Backend, Terminal};
 use std::{
     fs,
-    io::{self, stdout},
+    io::{self, stdout, Write},
     path::Path,
+    process::{Command, Stdio},
 };
-
 fn main() -> io::Result<()> {
     let config_dir_path = dirs::config_dir()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Could not find config directory"))?
@@ -31,35 +30,27 @@ fn main() -> io::Result<()> {
     let data_dir_path = dirs::data_dir()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Could not find data directory"))?
         .join(CONFIG_DIR_NAME);
-
     fs::create_dir_all(&config_dir_path)?;
     fs::create_dir_all(&data_dir_path)?;
-
     let config_path = config_dir_path.join(CONFIG_FILE_NAME);
     let config = load_config(&config_path);
-
     let script_dir_path_str = shellexpand::tilde(&config.script_directory).to_string();
     let script_dir_path = Path::new(&script_dir_path_str).to_path_buf();
     fs::create_dir_all(&script_dir_path)?;
-
     let db_url = &config.database_url;
-
     if !config_path.exists() {
         fs::write(
             &config_path,
             "# Configuration for sqledger\n# Directory where .sql scripts are stored.\n# You can use '~' for your home directory.\nscript_directory = \"~/.config/sqledger/scripts\"\n\n# PostgreSQL connection string.\ndatabase_url = \"postgresql://user:password@host:port/database\"\n",
         )?;
     }
-
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
     let mut app = App::new(&script_dir_path, db_url)?;
     let res = run_app(&mut terminal, &mut app, db_url, &script_dir_path);
-
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -67,13 +58,36 @@ fn main() -> io::Result<()> {
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
-
     if let Err(err) = res {
         println!("{:?}", err)
     }
-
     Ok(())
 }
+
+/// Copies the given text to the clipboard by spawning `wl-copy`.
+fn copy_to_clipboard(app: &mut App, text: String) {
+    let mut child = match Command::new("wl-copy").stdin(Stdio::piped()).spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            app.set_query_result(format!("Error: Failed to spawn wl-copy: {}", e));
+            return;
+        }
+    };
+
+    if let Some(mut stdin) = child.stdin.take() {
+        match stdin.write_all(text.as_bytes()) {
+            Ok(_) => {
+                app.set_query_result("Results copied to clipboard!".to_string());
+            }
+            Err(e) => {
+                app.set_query_result(format!("Error: Failed to write to wl-copy: {}", e));
+            }
+        }
+    } else {
+        app.set_query_result("Error: Failed to get wl-copy stdin.".to_string());
+    }
+}
+
 
 /// The main TUI loop
 fn run_app<B: Backend + io::Write>(
@@ -82,56 +96,24 @@ fn run_app<B: Backend + io::Write>(
     db_url: &str,
     script_dir_path: &Path,
 ) -> io::Result<()> {
-    let mut clipboard: Option<Clipboard> = match Clipboard::new() {
-        Ok(cb) => Some(cb),
-        Err(e) => {
-            app.set_query_result(format!("Error initializing clipboard: {}", e));
-            None
-        }
-    };
 
     loop {
         terminal.draw(|f| ui(f, app))?;
-
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
                 match app.input_mode {
                     InputMode::Normal => match key.code {
                         KeyCode::Char('q') => return Ok(()),
-
-                        // ‼️ Script navigation restricted to j/k
                         KeyCode::Char('j') => app.next(),
                         KeyCode::Char('k') => app.previous(),
-
-                        // ‼️ Run script restricted to Enter
                         KeyCode::Enter => execute_sql(app, db_url),
-
-                        // ‼️ Horizontal scroll
                         KeyCode::Char('h') | KeyCode::Left => app.scroll_results_left(),
                         KeyCode::Char('l') | KeyCode::Right => app.scroll_results_right(),
-
-                        // ‼️ Vertical scroll
                         KeyCode::Down => app.scroll_results_down(),
                         KeyCode::Up => app.scroll_results_up(),
 
                         KeyCode::Char('c') => {
-                            if let Some(clipboard) = &mut clipboard {
-                                match clipboard.set_text(app.query_result.clone()) {
-                                    Ok(_) => {
-                                        app.set_query_result(
-                                            "Results copied to clipboard!".to_string(),
-                                        );
-                                    }
-                                    Err(e) => {
-                                        app.set_query_result(format!(
-                                            "Error copying to clipboard: {}",
-                                            e
-                                        ));
-                                    }
-                                }
-                            } else {
-                                app.set_query_result("Clipboard is not available.".to_string());
-                            }
+                            copy_to_clipboard(app, app.query_result.clone());
                         }
                         KeyCode::Char('e') => {
                             if let Some(selected_index) = app.list_state.selected() {
@@ -221,14 +203,6 @@ fn run_app<B: Backend + io::Write>(
                                 app.input_mode = InputMode::Normal;
                             }
                         }
-                        KeyCode::Char('c')
-                            if key
-                                .modifiers
-                                .contains(crossterm::event::KeyModifiers::CONTROL) =>
-                        {
-                            app.input_mode = InputMode::Normal;
-                            app.set_query_result("New script cancelled.".to_string());
-                        }
                         KeyCode::Esc => {
                             app.input_mode = InputMode::Normal;
                             app.set_query_result("New script cancelled.".to_string());
@@ -237,7 +211,16 @@ fn run_app<B: Backend + io::Write>(
                             app.filename_input.pop();
                         }
                         KeyCode::Char(c) => {
-                            app.filename_input.push(c);
+                            if c == 'c'
+                                && key
+                                    .modifiers
+                                    .contains(crossterm::event::KeyModifiers::CONTROL)
+                            {
+                                app.input_mode = InputMode::Normal;
+                                app.set_query_result("New script cancelled.".to_string());
+                            } else {
+                                app.filename_input.push(c);
+                            }
                         }
                         _ => {}
                     },
@@ -285,7 +268,6 @@ fn run_app<B: Backend + io::Write>(
                                             .unwrap_or(script_dir_path)
                                             .to_path_buf();
                                         new_path.push(format!("{}.sql", new_filename_stem));
-
                                         if new_path.exists() {
                                             app.set_query_result(format!(
                                                 "Error: File {} already exists.",
@@ -322,14 +304,6 @@ fn run_app<B: Backend + io::Write>(
                                 app.input_mode = InputMode::Normal;
                             }
                         }
-                        KeyCode::Char('c')
-                            if key
-                                .modifiers
-                                .contains(crossterm::event::KeyModifiers::CONTROL) =>
-                        {
-                            app.input_mode = InputMode::Normal;
-                            app.set_query_result("Rename cancelled.".to_string());
-                        }
                         KeyCode::Esc => {
                             app.input_mode = InputMode::Normal;
                             app.set_query_result("Rename cancelled.".to_string());
@@ -338,7 +312,16 @@ fn run_app<B: Backend + io::Write>(
                             app.filename_input.pop();
                         }
                         KeyCode::Char(c) => {
-                            app.filename_input.push(c);
+                            if c == 'c'
+                                && key
+                                    .modifiers
+                                    .contains(crossterm::event::KeyModifiers::CONTROL)
+                            {
+                                app.input_mode = InputMode::Normal;
+                                app.set_query_result("Rename cancelled.".to_string());
+                            } else {
+                                app.filename_input.push(c);
+                            }
                         }
                         _ => {}
                     },
