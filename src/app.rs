@@ -19,17 +19,19 @@ pub struct App {
     pub input_mode: InputMode,
     pub filename_input: String,
     pub help_message: String,
+    pub result_scroll_x: u16, // ‼️ Store the horizontal scroll offset
 }
 
 impl App {
     /// Creates a new App, scanning the configured script directory for .sql files
     pub fn new(script_dir_path: &Path, db_url: &str) -> io::Result<Self> {
         let help_message = format!(
-            "Welcome to sqledger!\n\nScripts: {}\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k' or ↓/↑: Navigate scripts\n'l' or 'Enter' : Run selected script\n'e'           : Edit selected script\n'a'           : Add a new script\n'd'           : Delete selected script\n'r'           : Rename selected script\n'c'           : Copy results to clipboard\n'?'           : Toggle this help message\n'q'           : Quit",
-            // ‼️ Added 'c' keybind to the help text above
+            "Welcome to sqledger!\n\nScripts: {}\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k' or ↓/↑: Navigate scripts\n'l' or 'Enter' : Run selected script\n'e'           : Edit selected script\n'a'           : Add a new script\n'd'           : Delete selected script\n'r'           : Rename selected script\n'c'           : Copy results to clipboard\n'h'/'l' or ←/→: Scroll results\n'?'           : Toggle this help message\n'q'           : Quit",
+            // ‼️ Added 'h'/'l' keybind to the help text above
             script_dir_path.display(),
             db_url
         );
+
         let mut app = Self {
             sql_files: Vec::new(),
             list_state: ListState::default(),
@@ -38,9 +40,25 @@ impl App {
             input_mode: InputMode::Normal,
             filename_input: String::new(),
             help_message,
+            result_scroll_x: 0, // ‼️ Initialize scroll to 0
         };
         app.rescan_scripts(script_dir_path)?;
         Ok(app)
+    }
+
+    // ‼️ Add a new method to set the query result and reset the scroll
+    pub fn set_query_result(&mut self, message: String) {
+        self.query_result = message;
+        self.result_scroll_x = 0;
+    }
+
+    // ‼️ Add methods to handle scrolling
+    pub fn scroll_results_left(&mut self) {
+        self.result_scroll_x = self.result_scroll_x.saturating_sub(4); // Scroll 4 chars left
+    }
+
+    pub fn scroll_results_right(&mut self) {
+        self.result_scroll_x = self.result_scroll_x.saturating_add(4); // Scroll 4 chars right
     }
 
     pub fn rescan_scripts(&mut self, script_dir_path: &Path) -> io::Result<()> {
@@ -83,6 +101,7 @@ impl App {
                 self.list_state.select(None);
             }
         }
+
         self.update_preview();
         Ok(())
     }

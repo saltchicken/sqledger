@@ -12,17 +12,16 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                 let mut client = match Client::connect(db_url, NoTls) {
                     Ok(client) => client,
                     Err(e) => {
-                        app.query_result = format!("Error connecting to database: {}", e);
+                        // ‼️ Use new method to set result and reset scroll
+                        app.set_query_result(format!("Error connecting to database: {}", e));
                         return;
                     }
                 };
 
                 let trimmed_sql = sql_content.trim();
-
                 if trimmed_sql.to_uppercase().starts_with("SELECT") {
                     match (|| -> Result<String, PostgresError> {
                         let rows = client.query(&sql_content, &[])?;
-
                         if rows.is_empty() {
                             return Ok("Query returned 0 rows.".to_string());
                         }
@@ -45,7 +44,6 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                                         Ok(None) => "NULL".to_string(),
                                         Err(e) => format!("<Err: {}>", e),
                                     },
-
                                     Type::INT2 => match row.try_get::<usize, Option<i16>>(i) {
                                         Ok(Some(v)) => v.to_string(),
                                         Ok(None) => "NULL".to_string(),
@@ -61,7 +59,6 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                                         Ok(None) => "NULL".to_string(),
                                         Err(e) => format!("<Err: {}>", e),
                                     },
-
                                     Type::FLOAT4 | Type::FLOAT8 => {
                                         match row.try_get::<usize, Option<f64>>(i) {
                                             Ok(Some(v)) => v.to_string(),
@@ -69,7 +66,6 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                                             Err(e) => format!("<Err: {}>", e),
                                         }
                                     }
-
                                     // ‼️ START OF CHANGES
                                     // Add specific arms for date/time types
                                     Type::DATE => {
@@ -93,7 +89,6 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                                             Err(e) => format!("<Err: {}>", e),
                                         }
                                     }
-
                                     // ‼️ Remove DATE, TIME, and TIMESTAMP from this list
                                     Type::TEXT
                                     | Type::VARCHAR
@@ -109,7 +104,6 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                                         }
                                     }
                                     // ‼️ END OF CHANGES
-
                                     // A fallback for any other unhandled types
                                     _ => match row.try_get::<usize, Option<String>>(i) {
                                         Ok(Some(v)) => v,
@@ -130,11 +124,13 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                             output.push_str(&format!("{:<width$} | ", name, width = widths[i]));
                         }
                         output.push('\n');
+
                         for width in &widths {
                             output.push_str(&"-".repeat(*width));
                             output.push_str("---");
                         }
                         output.push('\n');
+
                         for row in rows_data {
                             for (i, value) in row.iter().enumerate() {
                                 output.push_str(&format!(
@@ -145,22 +141,28 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                             }
                             output.push('\n');
                         }
+
                         Ok(output)
                     })() {
-                        Ok(formatted_result) => app.query_result = formatted_result,
-                        Err(e) => app.query_result = format!("Error executing query: {}", e),
+                        // ‼️ Use new method
+                        Ok(formatted_result) => app.set_query_result(formatted_result),
+                        // ‼️ Use new method
+                        Err(e) => app.set_query_result(format!("Error executing query: {}", e)),
                     }
                 } else {
                     match client.batch_execute(&sql_content) {
                         Ok(_) => {
-                            app.query_result = "Command executed successfully.".to_string();
+                            // ‼️ Use new method
+                            app.set_query_result("Command executed successfully.".to_string());
                         }
-                        Err(e) => app.query_result = format!("Error executing command: {}", e),
+                        // ‼️ Use new method
+                        Err(e) => app.set_query_result(format!("Error executing command: {}", e)),
                     }
                 }
             }
             Err(e) => {
-                app.query_result = format!("Error reading file {}: {}", file_path, e);
+                // ‼️ Use new method
+                app.set_query_result(format!("Error reading file {}: {}", file_path, e));
             }
         }
     }

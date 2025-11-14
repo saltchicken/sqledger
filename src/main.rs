@@ -58,7 +58,6 @@ fn main() -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(&script_dir_path, db_url)?;
-
     let res = run_app(&mut terminal, &mut app, db_url, &script_dir_path);
 
     disable_raw_mode()?;
@@ -89,8 +88,8 @@ fn run_app<B: Backend + io::Write>(
         Ok(cb) => Some(cb),
         Err(e) => {
             // If clipboard fails to init, we can't use it, but the app can still run.
-            // We'll just update the query_result to inform the user.
-            app.query_result = format!("Error initializing clipboard: {}", e);
+            // ‼️ Use new method
+            app.set_query_result(format!("Error initializing clipboard: {}", e));
             None
         }
     };
@@ -106,22 +105,31 @@ fn run_app<B: Backend + io::Write>(
                         KeyCode::Char('j') | KeyCode::Down => app.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.previous(),
                         KeyCode::Char('l') | KeyCode::Enter => execute_sql(app, db_url),
+                        // ‼️ START OF SCROLL KEYBINDINGS
+                        KeyCode::Char('h') | KeyCode::Left => app.scroll_results_left(),
+                        KeyCode::Char('l') | KeyCode::Right => app.scroll_results_right(),
+                        // ‼️ END OF SCROLL KEYBINDINGS
                         // ‼️ Modify this arm to use the long-lived clipboard
                         KeyCode::Char('c') => {
                             if let Some(clipboard) = &mut clipboard {
                                 match clipboard.set_text(app.query_result.clone()) {
                                     Ok(_) => {
-                                        app.query_result =
-                                            "Results copied to clipboard!".to_string();
+                                        // ‼️ Use new method
+                                        app.set_query_result(
+                                            "Results copied to clipboard!".to_string(),
+                                        );
                                     }
                                     Err(e) => {
-                                        app.query_result =
-                                            format!("Error copying to clipboard: {}", e);
+                                        // ‼️ Use new method
+                                        app.set_query_result(format!(
+                                            "Error copying to clipboard: {}",
+                                            e
+                                        ));
                                     }
                                 }
                             } else {
-                                // This branch handles the case where clipboard init failed at startup
-                                app.query_result = "Clipboard is not available.".to_string();
+                                // ‼️ Use new method
+                                app.set_query_result("Clipboard is not available.".to_string());
                             }
                         }
                         KeyCode::Char('e') => {
@@ -130,8 +138,10 @@ fn run_app<B: Backend + io::Write>(
                                     let file_path = Path::new(file_path_str);
                                     let success = open_editor(terminal, file_path)?;
                                     if !success {
-                                        app.query_result =
-                                            "Editor exited with an error.".to_string();
+                                        // ‼️ Use new method
+                                        app.set_query_result(
+                                            "Editor exited with an error.".to_string(),
+                                        );
                                     }
                                     app.rescan_scripts(script_dir_path)?;
                                 }
@@ -140,28 +150,35 @@ fn run_app<B: Backend + io::Write>(
                         KeyCode::Char('a') => {
                             app.input_mode = InputMode::EditingFilename;
                             app.filename_input.clear();
-                            app.query_result =
+                            // ‼️ Use new method
+                            app.set_query_result(
                                 "Enter new script name (no extension). Press [Enter] to confirm, [Esc] to cancel."
-                                    .to_string();
+                                    .to_string(),
+                            );
                         }
                         KeyCode::Char('d') => {
                             if app.list_state.selected().is_some() {
                                 app.input_mode = InputMode::ConfirmingDelete;
                                 let filename = app.get_selected_filename_stem().unwrap_or_default();
-                                app.query_result = format!("Delete '{}'? (y/n)", filename);
+                                // ‼️ Use new method
+                                app.set_query_result(format!("Delete '{}'? (y/n)", filename));
                             } else {
-                                app.query_result = "No script selected to delete.".to_string();
+                                // ‼️ Use new method
+                                app.set_query_result("No script selected to delete.".to_string());
                             }
                         }
                         KeyCode::Char('r') => {
                             if let Some(filename_stem) = app.get_selected_filename_stem() {
                                 app.input_mode = InputMode::RenamingScript;
                                 app.filename_input = filename_stem;
-                                app.query_result =
+                                // ‼️ Use new method
+                                app.set_query_result(
                                     "Enter new script name (no extension). Press [Enter] to confirm, [Esc] to cancel."
-                                        .to_string();
+                                        .to_string(),
+                                );
                             } else {
-                                app.query_result = "No script selected to rename.".to_string();
+                                // ‼️ Use new method
+                                app.set_query_result("No script selected to rename.".to_string());
                             }
                         }
                         KeyCode::Char('?') => {
@@ -174,29 +191,33 @@ fn run_app<B: Backend + io::Write>(
                             let filename_stem = app.filename_input.trim();
                             if filename_stem.is_empty() {
                                 app.input_mode = InputMode::Normal;
-                                app.query_result = "New script cancelled.".to_string();
+                                // ‼️ Use new method
+                                app.set_query_result("New script cancelled.".to_string());
                             } else {
                                 let mut new_file_path = script_dir_path.to_path_buf();
                                 new_file_path.push(format!("{}.sql", filename_stem));
-
                                 if new_file_path.exists() {
-                                    app.query_result = format!(
+                                    // ‼️ Use new method
+                                    app.set_query_result(format!(
                                         "Error: File {} already exists.",
                                         new_file_path.display()
-                                    );
+                                    ));
                                 } else {
                                     let new_file_path_str =
                                         new_file_path.to_string_lossy().to_string();
                                     fs::write(&new_file_path, "")?;
                                     let success = open_editor(terminal, &new_file_path)?;
                                     if !success {
-                                        app.query_result =
-                                            "Editor exited with an error.".to_string();
+                                        // ‼️ Use new method
+                                        app.set_query_result(
+                                            "Editor exited with an error.".to_string(),
+                                        );
                                     } else {
-                                        app.query_result = format!(
+                                        // ‼️ Use new method
+                                        app.set_query_result(format!(
                                             "Script {} created successfully.",
                                             new_file_path.display()
-                                        );
+                                        ));
                                     }
                                     app.rescan_scripts(script_dir_path)?;
                                     if let Some(new_index) =
@@ -215,11 +236,13 @@ fn run_app<B: Backend + io::Write>(
                                 .contains(crossterm::event::KeyModifiers::CONTROL) =>
                         {
                             app.input_mode = InputMode::Normal;
-                            app.query_result = "New script cancelled.".to_string();
+                            // ‼️ Use new method
+                            app.set_query_result("New script cancelled.".to_string());
                         }
                         KeyCode::Esc => {
                             app.input_mode = InputMode::Normal;
-                            app.query_result = "New script cancelled.".to_string();
+                            // ‼️ Use new method
+                            app.set_query_result("New script cancelled.".to_string());
                         }
                         KeyCode::Backspace => {
                             app.filename_input.pop();
@@ -235,15 +258,19 @@ fn run_app<B: Backend + io::Write>(
                                 if let Some(file_path_str) = app.sql_files.get(selected_index) {
                                     match fs::remove_file(file_path_str) {
                                         Ok(_) => {
-                                            app.query_result =
-                                                format!("File {} deleted.", file_path_str);
+                                            // ‼️ Use new method
+                                            app.set_query_result(format!(
+                                                "File {} deleted.",
+                                                file_path_str
+                                            ));
                                             app.rescan_scripts(script_dir_path)?;
                                         }
                                         Err(e) => {
-                                            app.query_result = format!(
+                                            // ‼️ Use new method
+                                            app.set_query_result(format!(
                                                 "Error deleting file {}: {}",
                                                 file_path_str, e
-                                            );
+                                            ));
                                         }
                                     }
                                 }
@@ -252,7 +279,8 @@ fn run_app<B: Backend + io::Write>(
                         }
                         KeyCode::Char('n') | KeyCode::Esc => {
                             app.input_mode = InputMode::Normal;
-                            app.query_result = "Deletion cancelled.".to_string();
+                            // ‼️ Use new method
+                            app.set_query_result("Deletion cancelled.".to_string());
                         }
                         _ => {}
                     },
@@ -261,7 +289,8 @@ fn run_app<B: Backend + io::Write>(
                             let new_filename_stem = app.filename_input.trim();
                             if new_filename_stem.is_empty() {
                                 app.input_mode = InputMode::Normal;
-                                app.query_result = "Rename cancelled.".to_string();
+                                // ‼️ Use new method
+                                app.set_query_result("Rename cancelled.".to_string());
                             } else {
                                 if let Some(selected_index) = app.list_state.selected() {
                                     if let Some(old_path_str) = app.sql_files.get(selected_index) {
@@ -273,14 +302,18 @@ fn run_app<B: Backend + io::Write>(
                                         new_path.push(format!("{}.sql", new_filename_stem));
 
                                         if new_path.exists() {
-                                            app.query_result = format!(
+                                            // ‼️ Use new method
+                                            app.set_query_result(format!(
                                                 "Error: File {} already exists.",
                                                 new_path.display()
-                                            );
+                                            ));
                                         } else {
                                             match fs::rename(old_path, &new_path) {
                                                 Ok(_) => {
-                                                    app.query_result = "File renamed.".to_string();
+                                                    // ‼️ Use new method
+                                                    app.set_query_result(
+                                                        "File renamed.".to_string(),
+                                                    );
                                                     let new_path_str =
                                                         new_path.to_string_lossy().to_string();
                                                     app.rescan_scripts(script_dir_path)?;
@@ -294,8 +327,11 @@ fn run_app<B: Backend + io::Write>(
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    app.query_result =
-                                                        format!("Error renaming file: {}", e);
+                                                    // ‼️ Use new method
+                                                    app.set_query_result(format!(
+                                                        "Error renaming file: {}",
+                                                        e
+                                                    ));
                                                 }
                                             }
                                         }
@@ -310,11 +346,13 @@ fn run_app<B: Backend + io::Write>(
                                 .contains(crossterm::event::KeyModifiers::CONTROL) =>
                         {
                             app.input_mode = InputMode::Normal;
-                            app.query_result = "Rename cancelled.".to_string();
+                            // ‼️ Use new method
+                            app.set_query_result("Rename cancelled.".to_string());
                         }
                         KeyCode::Esc => {
                             app.input_mode = InputMode::Normal;
-                            app.query_result = "Rename cancelled.".to_string();
+                            // ‼️ Use new method
+                            app.set_query_result("Rename cancelled.".to_string());
                         }
                         KeyCode::Backspace => {
                             app.filename_input.pop();
