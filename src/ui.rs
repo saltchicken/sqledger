@@ -51,10 +51,10 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     // Bottom-Right Pane: Query Results
     let results_block = Block::default().borders(Borders::ALL).title("Results");
-    // ‼️ Apply the horizontal scroll offset here. The first value is vertical, second is horizontal.
+    // ‼️ Apply both vertical (y) and horizontal (x) scroll offsets
     let results_text = Paragraph::new(app.query_result.as_str())
         .block(results_block)
-        .scroll((0, app.result_scroll_x));
+        .scroll((app.result_scroll_y, app.result_scroll_x));
     f.render_widget(results_text, right_chunks[1]);
 
     // --- Popup Windows ---
