@@ -1,4 +1,6 @@
 use crate::app::App;
+// ‼️ Import the chrono types we need
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use postgres::{types::Type, Client, Error as PostgresError, NoTls};
 use std::fs;
 
@@ -35,8 +37,6 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                         let mut rows_data: Vec<Vec<String>> = Vec::new();
 
                         for row in &rows {
-                            // ‼️ Corrected this line's type from Vec<Vec<String>> to Vec<String>
-                            // and added :: to satisfy the compiler.
                             let mut values = Vec::<String>::new();
                             for (i, col) in row.columns().iter().enumerate() {
                                 let val_str: String = match *col.type_() {
@@ -46,30 +46,21 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                                         Err(e) => format!("<Err: {}>", e),
                                     },
 
-                                    Type::INT2 => {
-                                        // This is i16
-                                        match row.try_get::<usize, Option<i16>>(i) {
-                                            Ok(Some(v)) => v.to_string(),
-                                            Ok(None) => "NULL".to_string(),
-                                            Err(e) => format!("<Err: {}>", e),
-                                        }
-                                    }
-                                    Type::INT4 => {
-                                        // This is i32 (integer)
-                                        match row.try_get::<usize, Option<i32>>(i) {
-                                            Ok(Some(v)) => v.to_string(),
-                                            Ok(None) => "NULL".to_string(),
-                                            Err(e) => format!("<Err: {}>", e),
-                                        }
-                                    }
-                                    Type::INT8 => {
-                                        // This is i64 (bigint)
-                                        match row.try_get::<usize, Option<i64>>(i) {
-                                            Ok(Some(v)) => v.to_string(),
-                                            Ok(None) => "NULL".to_string(),
-                                            Err(e) => format!("<Err: {}>", e),
-                                        }
-                                    }
+                                    Type::INT2 => match row.try_get::<usize, Option<i16>>(i) {
+                                        Ok(Some(v)) => v.to_string(),
+                                        Ok(None) => "NULL".to_string(),
+                                        Err(e) => format!("<Err: {}>", e),
+                                    },
+                                    Type::INT4 => match row.try_get::<usize, Option<i32>>(i) {
+                                        Ok(Some(v)) => v.to_string(),
+                                        Ok(None) => "NULL".to_string(),
+                                        Err(e) => format!("<Err: {}>", e),
+                                    },
+                                    Type::INT8 => match row.try_get::<usize, Option<i64>>(i) {
+                                        Ok(Some(v)) => v.to_string(),
+                                        Ok(None) => "NULL".to_string(),
+                                        Err(e) => format!("<Err: {}>", e),
+                                    },
 
                                     Type::FLOAT4 | Type::FLOAT8 => {
                                         match row.try_get::<usize, Option<f64>>(i) {
@@ -79,14 +70,35 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                                         }
                                     }
 
+                                    // ‼️ START OF CHANGES
+                                    // Add specific arms for date/time types
+                                    Type::DATE => {
+                                        match row.try_get::<usize, Option<NaiveDate>>(i) {
+                                            Ok(Some(v)) => v.to_string(),
+                                            Ok(None) => "NULL".to_string(),
+                                            Err(e) => format!("<Err: {}>", e),
+                                        }
+                                    }
+                                    Type::TIME => {
+                                        match row.try_get::<usize, Option<NaiveTime>>(i) {
+                                            Ok(Some(v)) => v.to_string(),
+                                            Ok(None) => "NULL".to_string(),
+                                            Err(e) => format!("<Err: {}>", e),
+                                        }
+                                    }
+                                    Type::TIMESTAMP | Type::TIMESTAMPTZ => {
+                                        match row.try_get::<usize, Option<NaiveDateTime>>(i) {
+                                            Ok(Some(v)) => v.to_string(),
+                                            Ok(None) => "NULL".to_string(),
+                                            Err(e) => format!("<Err: {}>", e),
+                                        }
+                                    }
+
+                                    // ‼️ Remove DATE, TIME, and TIMESTAMP from this list
                                     Type::TEXT
                                     | Type::VARCHAR
                                     | Type::NAME
                                     | Type::NUMERIC
-                                    | Type::TIMESTAMP
-                                    | Type::TIMESTAMPTZ
-                                    | Type::DATE
-                                    | Type::TIME
                                     | Type::UUID
                                     | Type::JSON
                                     | Type::JSONB => {
@@ -96,6 +108,7 @@ pub fn execute_sql(app: &mut App, db_url: &str) {
                                             Err(e) => format!("<Err: {}>", e),
                                         }
                                     }
+                                    // ‼️ END OF CHANGES
 
                                     // A fallback for any other unhandled types
                                     _ => match row.try_get::<usize, Option<String>>(i) {
