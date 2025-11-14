@@ -964,21 +964,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
-name = "plx"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "chrono",
- "crossterm 0.29.0",
- "dirs",
- "postgres",
- "ratatui",
- "serde",
- "shellexpand",
- "toml",
-]
-
-[[package]]
 name = "png"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1318,6 +1303,21 @@ checksum = "17129e116933cf371d018bb80ae557e889637989d8638274fb25622827b03881"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "sqledger"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "chrono",
+ "crossterm 0.29.0",
+ "dirs",
+ "postgres",
+ "ratatui",
+ "serde",
+ "shellexpand",
+ "toml",
 ]
 
 [[package]]
