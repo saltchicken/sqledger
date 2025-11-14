@@ -23,11 +23,12 @@ pub struct App {
 
 impl App {
     /// Creates a new App, scanning the configured script directory for .sql files
-    pub fn new(script_dir_path: &Path, db_path: &Path) -> io::Result<Self> {
+    pub fn new(script_dir_path: &Path, db_url: &str) -> io::Result<Self> {
         let help_message = format!(
-            "Welcome to sqledger!\n\nScripts: {}\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k' or ↓/↑: Navigate scripts\n'l' or 'Enter' : Run selected script\n'e'              : Edit selected script\n'a'              : Add a new script\n'd'              : Delete selected script\n'r'              : Rename selected script\n'?'              : Toggle this help message\n'q'              : Quit",
+            "Welcome to sqledger!\n\nScripts: {}\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k' or ↓/↑: Navigate scripts\n'l' or 'Enter' : Run selected script\n'e'           : Edit selected script\n'a'           : Add a new script\n'd'           : Delete selected script\n'r'           : Rename selected script\n'c'           : Copy results to clipboard\n'?'           : Toggle this help message\n'q'           : Quit",
+            // ‼️ Added 'c' keybind to the help text above
             script_dir_path.display(),
-            db_path.display()
+            db_url
         );
         let mut app = Self {
             sql_files: Vec::new(),
@@ -82,7 +83,6 @@ impl App {
                 self.list_state.select(None);
             }
         }
-
         self.update_preview();
         Ok(())
     }

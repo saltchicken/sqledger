@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use std::{fs, path::Path};
 
-pub const DB_NAME: &str = "scripts.db";
 pub const CONFIG_DIR_NAME: &str = "sqledger";
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 pub const DEFAULT_SCRIPTS_DIR: &str = "~/.config/sqledger/scripts";
@@ -10,16 +9,23 @@ pub const DEFAULT_SCRIPTS_DIR: &str = "~/.config/sqledger/scripts";
 pub struct Config {
     #[serde(default = "default_script_dir")]
     pub script_directory: String,
+    #[serde(default = "default_database_url")]
+    pub database_url: String,
 }
 
 fn default_script_dir() -> String {
     DEFAULT_SCRIPTS_DIR.to_string()
 }
 
+fn default_database_url() -> String {
+    "postgresql://postgres:postgres@localhost/postgres".to_string()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             script_directory: default_script_dir(),
+            database_url: default_database_url(),
         }
     }
 }

@@ -1,4 +1,3 @@
-// ‼️ Declare the new modules
 mod app;
 mod config;
 mod db;
@@ -7,18 +6,18 @@ mod ui;
 
 use crate::{
     app::{App, InputMode},
-    config::{load_config, CONFIG_DIR_NAME, CONFIG_FILE_NAME, DB_NAME},
+    config::{load_config, CONFIG_DIR_NAME, CONFIG_FILE_NAME},
     db::execute_sql,
     editor::open_editor,
     ui::ui,
 };
+use arboard::Clipboard;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::Backend, Terminal};
-use rusqlite::Connection;
 use std::{
     fs,
     io::{self, stdout},
@@ -43,18 +42,13 @@ fn main() -> io::Result<()> {
     let script_dir_path = Path::new(&script_dir_path_str).to_path_buf();
     fs::create_dir_all(&script_dir_path)?;
 
-    let db_path = data_dir_path.join(DB_NAME);
+    let db_url = &config.database_url;
 
     if !config_path.exists() {
         fs::write(
             &config_path,
-            "# Configuration for sqledger\n# Directory where .sql scripts are stored.\n# You can use '~' for your home directory.\nscript_directory = \"~/.config/sqledger/scripts\"\n",
+            "# Configuration for sqledger\n# Directory where .sql scripts are stored.\n# You can use '~' for your home directory.\nscript_directory = \"~/.config/sqledger/scripts\"\n\n# PostgreSQL connection string.\ndatabase_url = \"postgresql://user:password@host:port/database\"\n",
         )?;
-    }
-
-    if !db_path.exists() {
-        let conn = Connection::open(&db_path).expect("Failed to create dummy DB");
-        conn.execute_batch("").expect("Failed to open dummy DB");
     }
 
     enable_raw_mode()?;
@@ -63,8 +57,9 @@ fn main() -> io::Result<()> {
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(&script_dir_path, &db_path)?;
-    let res = run_app(&mut terminal, &mut app, &db_path, &script_dir_path);
+    let mut app = App::new(&script_dir_path, db_url)?;
+
+    let res = run_app(&mut terminal, &mut app, db_url, &script_dir_path);
 
     disable_raw_mode()?;
     execute!(
@@ -85,9 +80,21 @@ fn main() -> io::Result<()> {
 fn run_app<B: Backend + io::Write>(
     terminal: &mut Terminal<B>,
     app: &mut App,
-    db_path: &Path,
+    db_url: &str,
     script_dir_path: &Path,
 ) -> io::Result<()> {
+    // ‼️ Initialize clipboard here, at the start of the function.
+    // We store it in an Option in case initialization fails.
+    let mut clipboard: Option<Clipboard> = match Clipboard::new() {
+        Ok(cb) => Some(cb),
+        Err(e) => {
+            // If clipboard fails to init, we can't use it, but the app can still run.
+            // We'll just update the query_result to inform the user.
+            app.query_result = format!("Error initializing clipboard: {}", e);
+            None
+        }
+    };
+
     loop {
         terminal.draw(|f| ui(f, app))?;
 
@@ -98,8 +105,24 @@ fn run_app<B: Backend + io::Write>(
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('j') | KeyCode::Down => app.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.previous(),
-                        KeyCode::Char('l') | KeyCode::Enter => {
-                            execute_sql(app, &db_path.to_string_lossy())
+                        KeyCode::Char('l') | KeyCode::Enter => execute_sql(app, db_url),
+                        // ‼️ Modify this arm to use the long-lived clipboard
+                        KeyCode::Char('c') => {
+                            if let Some(clipboard) = &mut clipboard {
+                                match clipboard.set_text(app.query_result.clone()) {
+                                    Ok(_) => {
+                                        app.query_result =
+                                            "Results copied to clipboard!".to_string();
+                                    }
+                                    Err(e) => {
+                                        app.query_result =
+                                            format!("Error copying to clipboard: {}", e);
+                                    }
+                                }
+                            } else {
+                                // This branch handles the case where clipboard init failed at startup
+                                app.query_result = "Clipboard is not available.".to_string();
+                            }
                         }
                         KeyCode::Char('e') => {
                             if let Some(selected_index) = app.list_state.selected() {
@@ -124,7 +147,6 @@ fn run_app<B: Backend + io::Write>(
                         KeyCode::Char('d') => {
                             if app.list_state.selected().is_some() {
                                 app.input_mode = InputMode::ConfirmingDelete;
-                                // ‼️ Use helper to get stem (from original code)
                                 let filename = app.get_selected_filename_stem().unwrap_or_default();
                                 app.query_result = format!("Delete '{}'? (y/n)", filename);
                             } else {
@@ -132,7 +154,6 @@ fn run_app<B: Backend + io::Write>(
                             }
                         }
                         KeyCode::Char('r') => {
-                            // ‼️ Use helper to get stem (from original code)
                             if let Some(filename_stem) = app.get_selected_filename_stem() {
                                 app.input_mode = InputMode::RenamingScript;
                                 app.filename_input = filename_stem;
@@ -156,8 +177,8 @@ fn run_app<B: Backend + io::Write>(
                                 app.query_result = "New script cancelled.".to_string();
                             } else {
                                 let mut new_file_path = script_dir_path.to_path_buf();
-                                // ‼️ Add .sql extension manually (from original code)
                                 new_file_path.push(format!("{}.sql", filename_stem));
+
                                 if new_file_path.exists() {
                                     app.query_result = format!(
                                         "Error: File {} already exists.",
@@ -249,7 +270,6 @@ fn run_app<B: Backend + io::Write>(
                                             .parent()
                                             .unwrap_or(script_dir_path)
                                             .to_path_buf();
-                                        // ‼️ Add .sql extension manually (from original code)
                                         new_path.push(format!("{}.sql", new_filename_stem));
 
                                         if new_path.exists() {
