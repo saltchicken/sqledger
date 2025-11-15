@@ -1,3 +1,4 @@
+// src/db.rs
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use postgres::{Client, Error as PostgresError, types::Type};
 
@@ -19,7 +20,7 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
             // It's a block comment, find the closing */
             if let Some(end_comment_idx) = relevant_sql.find("*/") {
                 relevant_sql = &relevant_sql[end_comment_idx + 2..];
-            // Keep everything after the */
+                // Keep everything after the */
             } else {
                 // Unterminated block comment, treat as empty
                 relevant_sql = "";
@@ -38,12 +39,17 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
             if rows.is_empty() {
                 return Ok("Query returned 0 rows.".to_string());
             }
+
+            // ‼️ Get the row count here
+            let row_count = rows.len();
+
             let column_names: Vec<String> = rows[0]
                 .columns()
                 .iter()
                 .map(|c| c.name().to_string())
                 .collect();
             let mut widths: Vec<usize> = column_names.iter().map(|s| s.len()).collect();
+
             let mut rows_data: Vec<Vec<String>> = Vec::new();
             for row in &rows {
                 let mut values = Vec::<String>::new();
@@ -115,8 +121,13 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
                 }
                 rows_data.push(values);
             }
+
             // This formatting logic remains the same
             let mut output = String::new();
+
+            // ‼️ Prepend the row count to the output string
+            output.push_str(&format!("Rows: {}\n\n", row_count));
+
             for (i, name) in column_names.iter().enumerate() {
                 output.push_str(&format!("{:<width$} | ", name, width = widths[i]));
             }
@@ -134,16 +145,12 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
             }
             Ok(output)
         })() {
-
             Ok(formatted_result) => Ok(formatted_result),
-
             Err(e) => Err(format_db_error(&e, "Error executing query")),
         }
     } else {
         match client.batch_execute(sql_content) {
-
             Ok(_) => Ok("Command executed successfully.".to_string()),
-
             Err(e) => Err(format_db_error(&e, "Error executing command")),
         }
     }
@@ -176,3 +183,4 @@ fn format_db_error(e: &PostgresError, context: &str) -> String {
         format!("{}: {}", context, e)
     }
 }
+
