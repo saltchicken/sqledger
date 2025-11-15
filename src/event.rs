@@ -53,7 +53,7 @@ pub fn handle_key_event<B: Backend + io::Write>(
                     let file_path = &app.sql_files[selected_index];
                     match fs::read_to_string(file_path) {
                         Ok(sql_content) => {
-                            // ‼️ Call the new, decoupled db function
+
                             match execute_sql(client, &sql_content) {
                                 Ok(result) => app.set_query_result(result),
                                 Err(e) => app.set_query_result(e),

@@ -134,16 +134,16 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
             }
             Ok(output)
         })() {
-            // ‼️ On success, return Ok(string)
+
             Ok(formatted_result) => Ok(formatted_result),
-            // ‼️ On error, format the error and return Err(string)
+
             Err(e) => Err(format_db_error(&e, "Error executing query")),
         }
     } else {
         match client.batch_execute(sql_content) {
-            // ‼️ On success, return Ok(string)
+
             Ok(_) => Ok("Command executed successfully.".to_string()),
-            // ‼️ On error, format the error and return Err(string)
+
             Err(e) => Err(format_db_error(&e, "Error executing command")),
         }
     }

@@ -62,7 +62,7 @@ impl App {
         self.result_scroll_x = self.result_scroll_x.saturating_add(4);
     }
 
-    // ‼️ Add methods for vertical scrolling
+
     pub fn scroll_results_up(&mut self) {
         self.result_scroll_y = self.result_scroll_y.saturating_sub(1); // Scroll 1 line up
     }

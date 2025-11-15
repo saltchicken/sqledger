@@ -51,7 +51,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     // Bottom-Right Pane: Query Results
     let results_block = Block::default().borders(Borders::ALL).title("Results");
-    // ‼️ Apply both vertical (y) and horizontal (x) scroll offsets
+
     let results_text = Paragraph::new(app.query_result.as_str())
         .block(results_block)
         .scroll((app.result_scroll_y, app.result_scroll_x));
