@@ -40,7 +40,7 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
                 return Ok("Query returned 0 rows.".to_string());
             }
 
-            // ‼️ Get the row count here
+
             let row_count = rows.len();
 
             let column_names: Vec<String> = rows[0]
@@ -125,7 +125,7 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
             // This formatting logic remains the same
             let mut output = String::new();
 
-            // ‼️ Prepend the row count to the output string
+
             output.push_str(&format!("Rows: {}\n\n", row_count));
 
             for (i, name) in column_names.iter().enumerate() {
@@ -183,4 +183,3 @@ fn format_db_error(e: &PostgresError, context: &str) -> String {
         format!("{}: {}", context, e)
     }
 }
-
