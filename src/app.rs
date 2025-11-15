@@ -1,4 +1,4 @@
-use crate::db::QueryResult; // ‼️ Import the new struct
+use crate::db::QueryResult;
 use ratatui::widgets::ListState;
 use std::{fs, io, path::Path};
 
@@ -16,7 +16,7 @@ pub struct App {
     pub sql_files: Vec<String>,
     pub list_state: ListState,
     pub query_result: String,
-    pub query_row_count: Option<usize>, // ‼️ New field
+    pub query_row_count: Option<usize>,
     pub script_content_preview: String,
     pub input_mode: InputMode,
     pub filename_input: String,
@@ -38,7 +38,7 @@ impl App {
             sql_files: Vec::new(),
             list_state: ListState::default(),
             query_result: "Welcome! Press '?' for help.".to_string(),
-            query_row_count: None, // ‼️ Initialize new field
+            query_row_count: None,
             script_content_preview: "".to_string(),
             input_mode: InputMode::Normal,
             filename_input: String::new(),
@@ -50,7 +50,7 @@ impl App {
         Ok(app)
     }
 
-    // ‼️ New method to set the result from a DB query
+
     pub fn set_db_result(&mut self, result: QueryResult) {
         self.query_result = result.formatted_output;
         self.query_row_count = result.row_count;
@@ -58,10 +58,10 @@ impl App {
         self.result_scroll_y = 0;
     }
 
-    // ‼️ This method is now for general status messages
+
     pub fn set_query_result(&mut self, message: String) {
         self.query_result = message;
-        self.query_row_count = None; // ‼️ Reset row count for simple messages
+        self.query_row_count = None;
         self.result_scroll_x = 0;
         self.result_scroll_y = 0;
     }
@@ -188,4 +188,3 @@ impl App {
         }
     }
 }
-

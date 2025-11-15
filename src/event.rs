@@ -1,6 +1,6 @@
 use crate::{
     app::{App, InputMode},
-    db::{QueryResult, execute_sql}, // ‼️ Import QueryResult
+    db::{QueryResult, execute_sql},
     editor::open_editor,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -56,7 +56,7 @@ pub fn handle_key_event<B: Backend + io::Write>(
                     match fs::read_to_string(file_path) {
                         Ok(sql_content) => {
                             match execute_sql(client, &sql_content) {
-                                // ‼️ Use the new method
+
                                 Ok(result) => app.set_db_result(result),
                                 Err(e) => app.set_query_result(e),
                             }
@@ -271,4 +271,3 @@ pub fn handle_key_event<B: Backend + io::Write>(
     }
     Ok(true)
 }
-

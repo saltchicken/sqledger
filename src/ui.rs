@@ -50,13 +50,13 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(preview_text, right_chunks[0]);
 
     // Bottom-Right Pane: Query Results
-    // ‼️ Create the title string dynamically
+
     let results_title = match app.query_row_count {
         Some(count) => format!("Results (Rows: {})", count),
         None => "Results".to_string(),
     };
 
-    // ‼️ Use the new title string
+
     let results_block = Block::default().borders(Borders::ALL).title(results_title);
     let results_text = Paragraph::new(app.query_result.as_str())
         .block(results_block)
@@ -143,4 +143,3 @@ fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
         ])
         .split(popup_layout[1])[1]
 }
-

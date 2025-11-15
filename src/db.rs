@@ -133,7 +133,7 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
 
             // This formatting logic remains the same
             let mut output = String::new();
-            // ‼️ output.push_str(&format!("Rows: {}\n\n", row_count)); // ‼️ This line is removed
+
 
             for (i, name) in column_names.iter().enumerate() {
                 output.push_str(&format!("{:<width$} | ", name, width = widths[i]));
