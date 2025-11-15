@@ -20,13 +20,12 @@ pub struct App {
     pub filename_input: String,
     pub help_message: String,
     pub result_scroll_x: u16,
-    pub result_scroll_y: u16, // ‼️ Store the vertical scroll offset
+    pub result_scroll_y: u16,
 }
 
 impl App {
     /// Creates a new App, scanning the configured script directory for .sql files
     pub fn new(script_dir_path: &Path, db_url: &str) -> io::Result<Self> {
-        // ‼️ Updated help message to reflect new keybinds
         let help_message = format!(
             "Welcome to sqledger!\n\nScripts: {}\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k'          : Navigate scripts\n'Enter'        : Run selected script\n'e'            : Edit selected script\n'a'            : Add a new script\n'd'            : Delete selected script\n'r'            : Rename selected script\n'c'            : Copy results to clipboard\n'h'/'l' or ←/→   : Scroll results horizontally\n↓/↑            : Scroll results vertically\n'?'            : Toggle this help message\n'q'            : Quit",
             script_dir_path.display(),
@@ -42,13 +41,12 @@ impl App {
             filename_input: String::new(),
             help_message,
             result_scroll_x: 0,
-            result_scroll_y: 0, // ‼️ Initialize vertical scroll to 0
+            result_scroll_y: 0,
         };
         app.rescan_scripts(script_dir_path)?;
         Ok(app)
     }
 
-    /// ‼️ set_query_result now also resets vertical scroll
     pub fn set_query_result(&mut self, message: String) {
         self.query_result = message;
         self.result_scroll_x = 0;

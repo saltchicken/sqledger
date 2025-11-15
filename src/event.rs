@@ -5,7 +5,7 @@ use crate::{
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use postgres::Client;
-use ratatui::{backend::Backend, Terminal};
+use ratatui::{Terminal, backend::Backend};
 use std::{
     fs, io,
     io::Write,
@@ -14,7 +14,6 @@ use std::{
 };
 
 /// Copies the given text to the clipboard by spawning `wl-copy`.
-// ‼️ Moved from main.rs
 fn copy_to_clipboard(app: &mut App, text: String) {
     let mut child = match Command::new("wl-copy").stdin(Stdio::piped()).spawn() {
         Ok(child) => child,
@@ -37,7 +36,6 @@ fn copy_to_clipboard(app: &mut App, text: String) {
     }
 }
 
-/// ‼️ This function returns a Result<bool>, where `false` means "quit"
 pub fn handle_key_event<B: Backend + io::Write>(
     key: KeyEvent,
     app: &mut App,
@@ -47,11 +45,10 @@ pub fn handle_key_event<B: Backend + io::Write>(
 ) -> io::Result<bool> {
     match app.input_mode {
         InputMode::Normal => match key.code {
-            KeyCode::Char('q') => return Ok(false), // ‼️ Return false to quit
+            KeyCode::Char('q') => return Ok(false),
             KeyCode::Char('j') => app.next(),
             KeyCode::Char('k') => app.previous(),
             KeyCode::Enter => {
-                // ‼️ DB logic is now decoupled
                 if let Some(selected_index) = app.list_state.selected() {
                     let file_path = &app.sql_files[selected_index];
                     match fs::read_to_string(file_path) {
@@ -79,15 +76,15 @@ pub fn handle_key_event<B: Backend + io::Write>(
                 copy_to_clipboard(app, app.query_result.clone());
             }
             KeyCode::Char('e') => {
-                if let Some(selected_index) = app.list_state.selected() {
-                    if let Some(file_path_str) = app.sql_files.get(selected_index) {
-                        let file_path = Path::new(file_path_str);
-                        let success = open_editor(terminal, file_path)?;
-                        if !success {
-                            app.set_query_result("Editor exited with an error.".to_string());
-                        }
-                        app.rescan_scripts(script_dir_path)?;
+                if let Some(selected_index) = app.list_state.selected()
+                    && let Some(file_path_str) = app.sql_files.get(selected_index)
+                {
+                    let file_path = Path::new(file_path_str);
+                    let success = open_editor(terminal, file_path)?;
+                    if !success {
+                        app.set_query_result("Editor exited with an error.".to_string());
                     }
+                    app.rescan_scripts(script_dir_path)?;
                 }
             }
             KeyCode::Char('a') => {
@@ -180,19 +177,19 @@ pub fn handle_key_event<B: Backend + io::Write>(
         },
         InputMode::ConfirmingDelete => match key.code {
             KeyCode::Char('y') => {
-                if let Some(selected_index) = app.list_state.selected() {
-                    if let Some(file_path_str) = app.sql_files.get(selected_index) {
-                        match fs::remove_file(file_path_str) {
-                            Ok(_) => {
-                                app.set_query_result(format!("File {} deleted.", file_path_str));
-                                app.rescan_scripts(script_dir_path)?;
-                            }
-                            Err(e) => {
-                                app.set_query_result(format!(
-                                    "Error deleting file {}: {}",
-                                    file_path_str, e
-                                ));
-                            }
+                if let Some(selected_index) = app.list_state.selected()
+                    && let Some(file_path_str) = app.sql_files.get(selected_index)
+                {
+                    match fs::remove_file(file_path_str) {
+                        Ok(_) => {
+                            app.set_query_result(format!("File {} deleted.", file_path_str));
+                            app.rescan_scripts(script_dir_path)?;
+                        }
+                        Err(e) => {
+                            app.set_query_result(format!(
+                                "Error deleting file {}: {}",
+                                file_path_str, e
+                            ));
                         }
                     }
                 }
@@ -211,33 +208,33 @@ pub fn handle_key_event<B: Backend + io::Write>(
                     app.input_mode = InputMode::Normal;
                     app.set_query_result("Rename cancelled.".to_string());
                 } else {
-                    if let Some(selected_index) = app.list_state.selected() {
-                        if let Some(old_path_str) = app.sql_files.get(selected_index) {
-                            let old_path = Path::new(old_path_str);
-                            let mut new_path =
-                                old_path.parent().unwrap_or(script_dir_path).to_path_buf();
-                            new_path.push(format!("{}.sql", new_filename_stem));
-                            if new_path.exists() {
-                                app.set_query_result(format!(
-                                    "Error: File {} already exists.",
-                                    new_path.display()
-                                ));
-                            } else {
-                                match fs::rename(old_path, &new_path) {
-                                    Ok(_) => {
-                                        app.set_query_result("File renamed.".to_string());
-                                        let new_path_str = new_path.to_string_lossy().to_string();
-                                        app.rescan_scripts(script_dir_path)?;
-                                        if let Some(new_index) =
-                                            app.sql_files.iter().position(|p| p == &new_path_str)
-                                        {
-                                            app.list_state.select(Some(new_index));
-                                            app.update_preview();
-                                        }
+                    if let Some(selected_index) = app.list_state.selected()
+                        && let Some(old_path_str) = app.sql_files.get(selected_index)
+                    {
+                        let old_path = Path::new(old_path_str);
+                        let mut new_path =
+                            old_path.parent().unwrap_or(script_dir_path).to_path_buf();
+                        new_path.push(format!("{}.sql", new_filename_stem));
+                        if new_path.exists() {
+                            app.set_query_result(format!(
+                                "Error: File {} already exists.",
+                                new_path.display()
+                            ));
+                        } else {
+                            match fs::rename(old_path, &new_path) {
+                                Ok(_) => {
+                                    app.set_query_result("File renamed.".to_string());
+                                    let new_path_str = new_path.to_string_lossy().to_string();
+                                    app.rescan_scripts(script_dir_path)?;
+                                    if let Some(new_index) =
+                                        app.sql_files.iter().position(|p| p == &new_path_str)
+                                    {
+                                        app.list_state.select(Some(new_index));
+                                        app.update_preview();
                                     }
-                                    Err(e) => {
-                                        app.set_query_result(format!("Error renaming file: {}", e));
-                                    }
+                                }
+                                Err(e) => {
+                                    app.set_query_result(format!("Error renaming file: {}", e));
                                 }
                             }
                         }
@@ -269,5 +266,5 @@ pub fn handle_key_event<B: Backend + io::Write>(
             _ => {}
         },
     }
-    Ok(true) // ‼️ Return true to continue the loop
+    Ok(true)
 }
