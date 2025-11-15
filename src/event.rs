@@ -1,6 +1,6 @@
 use crate::{
     app::{App, InputMode},
-    db::execute_sql,
+    db::{QueryResult, execute_sql}, // ‼️ Import QueryResult
     editor::open_editor,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -15,6 +15,7 @@ use std::{
 
 /// Copies the given text to the clipboard by spawning `wl-copy`.
 fn copy_to_clipboard(app: &mut App, text: String) {
+    // ... (function is unchanged)
     let mut child = match Command::new("wl-copy").stdin(Stdio::piped()).spawn() {
         Ok(child) => child,
         Err(e) => {
@@ -22,6 +23,7 @@ fn copy_to_clipboard(app: &mut App, text: String) {
             return;
         }
     };
+
     if let Some(mut stdin) = child.stdin.take() {
         match stdin.write_all(text.as_bytes()) {
             Ok(_) => {
@@ -53,9 +55,9 @@ pub fn handle_key_event<B: Backend + io::Write>(
                     let file_path = &app.sql_files[selected_index];
                     match fs::read_to_string(file_path) {
                         Ok(sql_content) => {
-
                             match execute_sql(client, &sql_content) {
-                                Ok(result) => app.set_query_result(result),
+                                // ‼️ Use the new method
+                                Ok(result) => app.set_db_result(result),
                                 Err(e) => app.set_query_result(e),
                             }
                         }
@@ -69,6 +71,7 @@ pub fn handle_key_event<B: Backend + io::Write>(
                 }
             }
             KeyCode::Char('h') | KeyCode::Left => app.scroll_results_left(),
+            // ... (rest of file is unchanged)
             KeyCode::Char('l') | KeyCode::Right => app.scroll_results_right(),
             KeyCode::Down => app.scroll_results_down(),
             KeyCode::Up => app.scroll_results_up(),
@@ -268,3 +271,4 @@ pub fn handle_key_event<B: Backend + io::Write>(
     }
     Ok(true)
 }
+

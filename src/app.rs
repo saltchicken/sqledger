@@ -1,3 +1,4 @@
+use crate::db::QueryResult; // ‼️ Import the new struct
 use ratatui::widgets::ListState;
 use std::{fs, io, path::Path};
 
@@ -15,6 +16,7 @@ pub struct App {
     pub sql_files: Vec<String>,
     pub list_state: ListState,
     pub query_result: String,
+    pub query_row_count: Option<usize>, // ‼️ New field
     pub script_content_preview: String,
     pub input_mode: InputMode,
     pub filename_input: String,
@@ -27,7 +29,7 @@ impl App {
     /// Creates a new App, scanning the configured script directory for .sql files
     pub fn new(script_dir_path: &Path, db_url: &str) -> io::Result<Self> {
         let help_message = format!(
-            "Welcome to sqledger!\n\nScripts: {}\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k'          : Navigate scripts\n'Enter'        : Run selected script\n'e'            : Edit selected script\n'a'            : Add a new script\n'd'            : Delete selected script\n'r'            : Rename selected script\n'c'            : Copy results to clipboard\n'h'/'l' or ←/→   : Scroll results horizontally\n↓/↑            : Scroll results vertically\n'?'            : Toggle this help message\n'q'            : Quit",
+            "Welcome to sqledger!\n\nScripts: {}\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k'         : Navigate scripts\n'Enter'       : Run selected script\n'e'           : Edit selected script\n'a'           : Add a new script\n'd'           : Delete selected script\n'r'           : Rename selected script\n'c'           : Copy results to clipboard\n'h'/'l' or ←/→ : Scroll results horizontally\n↓/↑           : Scroll results vertically\n'?'           : Toggle this help message\n'q'           : Quit",
             script_dir_path.display(),
             db_url
         );
@@ -36,6 +38,7 @@ impl App {
             sql_files: Vec::new(),
             list_state: ListState::default(),
             query_result: "Welcome! Press '?' for help.".to_string(),
+            query_row_count: None, // ‼️ Initialize new field
             script_content_preview: "".to_string(),
             input_mode: InputMode::Normal,
             filename_input: String::new(),
@@ -47,13 +50,24 @@ impl App {
         Ok(app)
     }
 
+    // ‼️ New method to set the result from a DB query
+    pub fn set_db_result(&mut self, result: QueryResult) {
+        self.query_result = result.formatted_output;
+        self.query_row_count = result.row_count;
+        self.result_scroll_x = 0;
+        self.result_scroll_y = 0;
+    }
+
+    // ‼️ This method is now for general status messages
     pub fn set_query_result(&mut self, message: String) {
         self.query_result = message;
+        self.query_row_count = None; // ‼️ Reset row count for simple messages
         self.result_scroll_x = 0;
         self.result_scroll_y = 0;
     }
 
     // --- Horizontal Scroll ---
+    // ... (rest of file is unchanged)
     pub fn scroll_results_left(&mut self) {
         self.result_scroll_x = self.result_scroll_x.saturating_sub(4);
     }
@@ -61,7 +75,6 @@ impl App {
     pub fn scroll_results_right(&mut self) {
         self.result_scroll_x = self.result_scroll_x.saturating_add(4);
     }
-
 
     pub fn scroll_results_up(&mut self) {
         self.result_scroll_y = self.result_scroll_y.saturating_sub(1); // Scroll 1 line up
@@ -111,7 +124,6 @@ impl App {
                 self.list_state.select(None);
             }
         }
-
         self.update_preview();
         Ok(())
     }
@@ -176,3 +188,4 @@ impl App {
         }
     }
 }
+

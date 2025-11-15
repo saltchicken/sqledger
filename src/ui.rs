@@ -1,9 +1,9 @@
 use crate::app::{App, InputMode};
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
-    Frame,
 };
 use std::{ffi::OsStr, path::Path};
 
@@ -50,8 +50,14 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(preview_text, right_chunks[0]);
 
     // Bottom-Right Pane: Query Results
-    let results_block = Block::default().borders(Borders::ALL).title("Results");
+    // ‼️ Create the title string dynamically
+    let results_title = match app.query_row_count {
+        Some(count) => format!("Results (Rows: {})", count),
+        None => "Results".to_string(),
+    };
 
+    // ‼️ Use the new title string
+    let results_block = Block::default().borders(Borders::ALL).title(results_title);
     let results_text = Paragraph::new(app.query_result.as_str())
         .block(results_block)
         .scroll((app.result_scroll_y, app.result_scroll_x));
@@ -59,6 +65,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     // --- Popup Windows ---
     match app.input_mode {
+        // ... (rest of file is unchanged)
         InputMode::EditingFilename => {
             let area = centered_rect(50, 3, f.area());
             let input_text = format!("{}_", app.filename_input);
@@ -67,7 +74,6 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .style(Style::default().bg(Color::LightBlue));
             let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
-
             f.render_widget(Clear, area);
             f.render_widget(input_paragraph, area);
         }
@@ -80,7 +86,6 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             let popup_paragraph = Paragraph::new(app.query_result.as_str())
                 .block(popup_block)
                 .alignment(Alignment::Center);
-
             f.render_widget(Clear, area);
             f.render_widget(popup_paragraph, area);
         }
@@ -92,7 +97,6 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
             let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
-
             f.render_widget(Clear, area);
             f.render_widget(input_paragraph, area);
         }
@@ -102,7 +106,6 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             let popup_paragraph = Paragraph::new(app.help_message.as_str())
                 .block(popup_block)
                 .alignment(Alignment::Left);
-
             f.render_widget(Clear, area);
             f.render_widget(popup_paragraph, area);
         }
@@ -140,3 +143,4 @@ fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
         ])
         .split(popup_layout[1])[1]
 }
+

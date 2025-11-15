@@ -2,7 +2,14 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use postgres::{Client, Error as PostgresError, types::Type};
 
-pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, String> {
+// Define a new struct to hold the query result and row count
+pub struct QueryResult {
+    pub formatted_output: String,
+    pub row_count: Option<usize>,
+}
+
+pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult, String> {
+    // Change return type
     let mut relevant_sql = sql_content.trim();
     // Loop to strip all leading comments (line and block)
     loop {
@@ -34,23 +41,25 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
 
     let upper_sql = relevant_sql.to_uppercase();
     if upper_sql.starts_with("SELECT") || upper_sql.starts_with("WITH") {
-        match (|| -> Result<String, PostgresError> {
+        match (|| -> Result<QueryResult, PostgresError> {
+            // Change inner return type
             let rows = client.query(sql_content, &[])?;
             if rows.is_empty() {
-                return Ok("Query returned 0 rows.".to_string());
+                // Return the struct
+                return Ok(QueryResult {
+                    formatted_output: "Query returned 0 rows.".to_string(),
+                    row_count: Some(0),
+                });
             }
-
-
             let row_count = rows.len();
-
             let column_names: Vec<String> = rows[0]
                 .columns()
                 .iter()
                 .map(|c| c.name().to_string())
                 .collect();
             let mut widths: Vec<usize> = column_names.iter().map(|s| s.len()).collect();
-
             let mut rows_data: Vec<Vec<String>> = Vec::new();
+
             for row in &rows {
                 let mut values = Vec::<String>::new();
                 for (i, col) in row.columns().iter().enumerate() {
@@ -124,9 +133,7 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
 
             // This formatting logic remains the same
             let mut output = String::new();
-
-
-            output.push_str(&format!("Rows: {}\n\n", row_count));
+            // ‼️ output.push_str(&format!("Rows: {}\n\n", row_count)); // ‼️ This line is removed
 
             for (i, name) in column_names.iter().enumerate() {
                 output.push_str(&format!("{:<width$} | ", name, width = widths[i]));
@@ -143,14 +150,23 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
                 }
                 output.push('\n');
             }
-            Ok(output)
+
+            // Return the struct
+            Ok(QueryResult {
+                formatted_output: output,
+                row_count: Some(row_count),
+            })
         })() {
-            Ok(formatted_result) => Ok(formatted_result),
+            Ok(query_result) => Ok(query_result), // Pass struct through
             Err(e) => Err(format_db_error(&e, "Error executing query")),
         }
     } else {
         match client.batch_execute(sql_content) {
-            Ok(_) => Ok("Command executed successfully.".to_string()),
+            // Return the struct
+            Ok(_) => Ok(QueryResult {
+                formatted_output: "Command executed successfully.".to_string(),
+                row_count: None, // No rows for non-query commands
+            }),
             Err(e) => Err(format_db_error(&e, "Error executing command")),
         }
     }
@@ -158,6 +174,7 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<String, Str
 
 /// Formats a PostgresError into a user-friendly, detailed string.
 fn format_db_error(e: &PostgresError, context: &str) -> String {
+    // ... (rest of function is unchanged)
     if let Some(db_error) = e.as_db_error() {
         // Build a detailed, multi-line error message
         let mut error_message = format!(
