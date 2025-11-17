@@ -5,7 +5,6 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
-use std::{ffi::OsStr, path::Path};
 
 /// Renders the user interface
 pub fn ui(f: &mut Frame, app: &mut App) {
@@ -14,22 +13,20 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
         .split(f.area());
 
-    // --- Left Pane: SQL File List ---
+    // --- Left Pane: Script List ---
+
     let items: Vec<ListItem> = app
-        .sql_files
+        .scripts
         .iter()
-        .map(|full_path| {
-            let filename_stem = Path::new(full_path)
-                .file_stem()
-                .unwrap_or_else(|| OsStr::new("invalid_filename"))
-                .to_string_lossy()
-                .to_string();
-            ListItem::new(filename_stem)
-        })
+        .map(|script| ListItem::new(script.name.clone()))
         .collect();
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("SQL Scripts"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Stored Scripts"),
+        )
         .highlight_style(
             Style::default()
                 .bg(Color::LightGreen)
@@ -50,13 +47,10 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(preview_text, right_chunks[0]);
 
     // Bottom-Right Pane: Query Results
-
     let results_title = match app.query_row_count {
         Some(count) => format!("Results (Rows: {})", count),
         None => "Results".to_string(),
     };
-
-
     let results_block = Block::default().borders(Borders::ALL).title(results_title);
     let results_text = Paragraph::new(app.query_result.as_str())
         .block(results_block)
@@ -65,7 +59,6 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     // --- Popup Windows ---
     match app.input_mode {
-        // ... (rest of file is unchanged)
         InputMode::EditingFilename => {
             let area = centered_rect(50, 3, f.area());
             let input_text = format!("{}_", app.filename_input);
@@ -101,7 +94,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             f.render_widget(input_paragraph, area);
         }
         InputMode::ShowHelp => {
-            let area = centered_rect(60, 15, f.area()); // 60% width, 15 lines height
+            let area = centered_rect(60, 15, f.area());
             let popup_block = Block::default().title("Help").borders(Borders::ALL);
             let popup_paragraph = Paragraph::new(app.help_message.as_str())
                 .block(popup_block)
@@ -115,7 +108,6 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     }
 }
 
-/// Helper function to create a centered rectangle for popups
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
     let (top_padding, bottom_padding) = {
         let total_padding = r.height.saturating_sub(height);

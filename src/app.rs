@@ -1,6 +1,7 @@
-use crate::db::QueryResult;
+use crate::db::{QueryResult, Script, get_all_scripts};
+use postgres::Client;
 use ratatui::widgets::ListState;
-use std::{fs, io, path::Path};
+use std::io;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum InputMode {
@@ -13,29 +14,28 @@ pub enum InputMode {
 
 /// App holds the state of the application
 pub struct App {
-    pub sql_files: Vec<String>,
+    pub scripts: Vec<Script>,
     pub list_state: ListState,
     pub query_result: String,
     pub query_row_count: Option<usize>,
     pub script_content_preview: String,
     pub input_mode: InputMode,
-    pub filename_input: String,
+    pub filename_input: String, // Used for "Script Name" input
     pub help_message: String,
     pub result_scroll_x: u16,
     pub result_scroll_y: u16,
 }
 
 impl App {
-    /// Creates a new App, scanning the configured script directory for .sql files
-    pub fn new(script_dir_path: &Path, db_url: &str) -> io::Result<Self> {
+
+    pub fn new(client: &mut Client, db_url: &str) -> io::Result<Self> {
         let help_message = format!(
-            "Welcome to sqledger!\n\nScripts: {}\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k'         : Navigate scripts\n'Enter'       : Run selected script\n'e'           : Edit selected script\n'a'           : Add a new script\n'd'           : Delete selected script\n'r'           : Rename selected script\n'c'           : Copy results to clipboard\n'h'/'l' or ←/→ : Scroll results horizontally\n↓/↑           : Scroll results vertically\n'?'           : Toggle this help message\n'q'           : Quit",
-            script_dir_path.display(),
+            "Welcome to sqledger!\n\nSource: Postgres Table (sqledger_scripts)\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k'         : Navigate scripts\n'Enter'       : Run selected script\n'e'           : Edit selected script\n'a'           : Add a new script\n'd'           : Delete selected script\n'r'           : Rename selected script\n'c'           : Copy results to clipboard\n'h'/'l' or ←/→ : Scroll results horizontally\n↓/↑           : Scroll results vertically\n'?'           : Toggle this help message\n'q'           : Quit",
             db_url
         );
 
         let mut app = Self {
-            sql_files: Vec::new(),
+            scripts: Vec::new(),
             list_state: ListState::default(),
             query_result: "Welcome! Press '?' for help.".to_string(),
             query_row_count: None,
@@ -46,10 +46,13 @@ impl App {
             result_scroll_x: 0,
             result_scroll_y: 0,
         };
-        app.rescan_scripts(script_dir_path)?;
+
+
+        app.refresh_scripts(client)
+            .map_err(|e| io::Error::other(e))?;
+
         Ok(app)
     }
-
 
     pub fn set_db_result(&mut self, result: QueryResult) {
         self.query_result = result.formatted_output;
@@ -58,7 +61,6 @@ impl App {
         self.result_scroll_y = 0;
     }
 
-
     pub fn set_query_result(&mut self, message: String) {
         self.query_result = message;
         self.query_row_count = None;
@@ -66,8 +68,6 @@ impl App {
         self.result_scroll_y = 0;
     }
 
-    // --- Horizontal Scroll ---
-    // ... (rest of file is unchanged)
     pub fn scroll_results_left(&mut self) {
         self.result_scroll_x = self.result_scroll_x.saturating_sub(4);
     }
@@ -77,77 +77,47 @@ impl App {
     }
 
     pub fn scroll_results_up(&mut self) {
-        self.result_scroll_y = self.result_scroll_y.saturating_sub(1); // Scroll 1 line up
+        self.result_scroll_y = self.result_scroll_y.saturating_sub(1);
     }
 
     pub fn scroll_results_down(&mut self) {
-        self.result_scroll_y = self.result_scroll_y.saturating_add(1); // Scroll 1 line down
+        self.result_scroll_y = self.result_scroll_y.saturating_add(1);
     }
 
-    pub fn rescan_scripts(&mut self, script_dir_path: &Path) -> io::Result<()> {
-        let mut sql_files = Vec::new();
-        let script_dir_entries = match fs::read_dir(script_dir_path) {
-            Ok(entries) => entries,
-            Err(e) => {
-                return Err(io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to read script directory at: {}. \nError: {}",
-                        script_dir_path.display(),
-                        e
-                    ),
-                ));
-            }
-        };
 
-        sql_files.extend(
-            script_dir_entries
-                .flatten()
-                .map(|entry| entry.path())
-                .filter(|path| path.is_file())
-                .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
-                .map(|path| path.to_string_lossy().to_string()),
-        );
-        sql_files.sort();
-
-        self.sql_files = sql_files;
+    pub fn refresh_scripts(&mut self, client: &mut Client) -> Result<(), String> {
+        let scripts = get_all_scripts(client)?;
+        self.scripts = scripts;
 
         let mut valid_selection_exists = false;
         if let Some(selected_index) = self.list_state.selected() {
-            valid_selection_exists = selected_index < self.sql_files.len();
+            valid_selection_exists = selected_index < self.scripts.len();
         }
 
         if !valid_selection_exists {
-            if !self.sql_files.is_empty() {
+            if !self.scripts.is_empty() {
                 self.list_state.select(Some(0));
             } else {
                 self.list_state.select(None);
             }
         }
+
         self.update_preview();
         Ok(())
     }
 
-    pub fn get_selected_filename_stem(&self) -> Option<String> {
-        self.list_state
-            .selected()
-            .and_then(|i| self.sql_files.get(i))
-            .map(|p| {
-                Path::new(p)
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string()
-            })
+
+    pub fn get_selected_script(&self) -> Option<&Script> {
+        self.list_state.selected().and_then(|i| self.scripts.get(i))
     }
 
     pub fn next(&mut self) {
-        if self.sql_files.is_empty() {
+        if self.scripts.is_empty() {
             return;
         }
         let i = match self.list_state.selected() {
             Some(i) => {
-                if i >= self.sql_files.len() - 1 {
+                if i >= self.scripts.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -160,13 +130,13 @@ impl App {
     }
 
     pub fn previous(&mut self) {
-        if self.sql_files.is_empty() {
+        if self.scripts.is_empty() {
             return;
         }
         let i = match self.list_state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.sql_files.len() - 1
+                    self.scripts.len() - 1
                 } else {
                     i - 1
                 }
@@ -178,13 +148,10 @@ impl App {
     }
 
     pub fn update_preview(&mut self) {
-        if let Some(selected_index) = self.list_state.selected() {
-            if let Some(file_path) = self.sql_files.get(selected_index) {
-                self.script_content_preview = fs::read_to_string(file_path)
-                    .unwrap_or_else(|e| format!("Error reading file {}: {}", file_path, e));
-            }
+        if let Some(script) = self.get_selected_script() {
+            self.script_content_preview = script.content.clone();
         } else {
-            self.script_content_preview = "No SQL files found.".to_string();
+            self.script_content_preview = "No scripts found.".to_string();
         }
     }
 }

@@ -2,6 +2,86 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use postgres::{Client, Error as PostgresError, types::Type};
 
+
+#[derive(Clone, Debug)]
+pub struct Script {
+    pub id: i32,
+    pub name: String,
+    pub content: String,
+}
+
+
+pub fn init_script_table(client: &mut Client) -> Result<(), String> {
+    let query = "
+        CREATE TABLE IF NOT EXISTS sqledger_scripts (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            content TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+    ";
+    client.batch_execute(query).map_err(|e| e.to_string())
+}
+
+
+pub fn get_all_scripts(client: &mut Client) -> Result<Vec<Script>, String> {
+    let query = "SELECT id, name, content FROM sqledger_scripts ORDER BY name ASC";
+    let rows = client.query(query, &[]).map_err(|e| e.to_string())?;
+
+    let scripts = rows
+        .iter()
+        .map(|row| Script {
+            id: row.get(0),
+            name: row.get(1),
+            content: row.get(2),
+        })
+        .collect();
+
+    Ok(scripts)
+}
+
+
+pub fn create_script(client: &mut Client, name: &str) -> Result<(), String> {
+    client
+        .execute(
+            "INSERT INTO sqledger_scripts (name, content) VALUES ($1, '')",
+            &[&name],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+
+pub fn delete_script(client: &mut Client, id: i32) -> Result<(), String> {
+    client
+        .execute("DELETE FROM sqledger_scripts WHERE id = $1", &[&id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+
+pub fn rename_script(client: &mut Client, id: i32, new_name: &str) -> Result<(), String> {
+    client
+        .execute(
+            "UPDATE sqledger_scripts SET name = $1 WHERE id = $2",
+            &[&new_name, &id],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+
+pub fn update_script_content(client: &mut Client, id: i32, content: &str) -> Result<(), String> {
+    client
+        .execute(
+            "UPDATE sqledger_scripts SET content = $1, updated_at = NOW() WHERE id = $2",
+            &[&content, &id],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // Define a new struct to hold the query result and row count
 pub struct QueryResult {
     pub formatted_output: String,
@@ -9,32 +89,25 @@ pub struct QueryResult {
 }
 
 pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult, String> {
-    // Change return type
+    // ... (Rest of the file remains exactly the same as previous version)
     let mut relevant_sql = sql_content.trim();
-    // Loop to strip all leading comments (line and block)
     loop {
-        relevant_sql = relevant_sql.trim_start(); // Trim whitespace between comments
+        relevant_sql = relevant_sql.trim_start();
         if relevant_sql.starts_with("--") {
-            // It's a line comment, find the next newline
             if let Some(newline_idx) = relevant_sql.find('\n') {
-                relevant_sql = &relevant_sql[newline_idx..]; // Keep everything after the newline
+                relevant_sql = &relevant_sql[newline_idx..];
             } else {
-                // The rest of the file is just this comment
                 relevant_sql = "";
                 break;
             }
         } else if relevant_sql.starts_with("/*") {
-            // It's a block comment, find the closing */
             if let Some(end_comment_idx) = relevant_sql.find("*/") {
                 relevant_sql = &relevant_sql[end_comment_idx + 2..];
-                // Keep everything after the */
             } else {
-                // Unterminated block comment, treat as empty
                 relevant_sql = "";
                 break;
             }
         } else {
-            // Not a comment, this is the start of the actual SQL
             break;
         }
     }
@@ -42,10 +115,8 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
     let upper_sql = relevant_sql.to_uppercase();
     if upper_sql.starts_with("SELECT") || upper_sql.starts_with("WITH") {
         match (|| -> Result<QueryResult, PostgresError> {
-            // Change inner return type
             let rows = client.query(sql_content, &[])?;
             if rows.is_empty() {
-                // Return the struct
                 return Ok(QueryResult {
                     formatted_output: "Query returned 0 rows.".to_string(),
                     row_count: Some(0),
@@ -59,7 +130,6 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
                 .collect();
             let mut widths: Vec<usize> = column_names.iter().map(|s| s.len()).collect();
             let mut rows_data: Vec<Vec<String>> = Vec::new();
-
             for row in &rows {
                 let mut values = Vec::<String>::new();
                 for (i, col) in row.columns().iter().enumerate() {
@@ -89,7 +159,6 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
                             Ok(None) => "NULL".to_string(),
                             Err(e) => format!("<Err: {}>", e),
                         },
-                        // Add specific arms for date/time types
                         Type::DATE => match row.try_get::<usize, Option<NaiveDate>>(i) {
                             Ok(Some(v)) => v.to_string(),
                             Ok(None) => "NULL".to_string(),
@@ -118,7 +187,6 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
                             Ok(None) => "NULL".to_string(),
                             Err(e) => format!("<Err: {}>", e),
                         },
-                        // A fallback for any other unhandled types
                         _ => match row.try_get::<usize, Option<String>>(i) {
                             Ok(Some(v)) => v,
                             Ok(None) => "NULL".to_string(),
@@ -131,10 +199,7 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
                 rows_data.push(values);
             }
 
-            // This formatting logic remains the same
             let mut output = String::new();
-
-
             for (i, name) in column_names.iter().enumerate() {
                 output.push_str(&format!("{:<width$} | ", name, width = widths[i]));
             }
@@ -150,37 +215,31 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
                 }
                 output.push('\n');
             }
-
-            // Return the struct
             Ok(QueryResult {
                 formatted_output: output,
                 row_count: Some(row_count),
             })
         })() {
-            Ok(query_result) => Ok(query_result), // Pass struct through
+            Ok(query_result) => Ok(query_result),
             Err(e) => Err(format_db_error(&e, "Error executing query")),
         }
     } else {
         match client.batch_execute(sql_content) {
-            // Return the struct
             Ok(_) => Ok(QueryResult {
                 formatted_output: "Command executed successfully.".to_string(),
-                row_count: None, // No rows for non-query commands
+                row_count: None,
             }),
             Err(e) => Err(format_db_error(&e, "Error executing command")),
         }
     }
 }
 
-/// Formats a PostgresError into a user-friendly, detailed string.
 fn format_db_error(e: &PostgresError, context: &str) -> String {
-    // ... (rest of function is unchanged)
     if let Some(db_error) = e.as_db_error() {
-        // Build a detailed, multi-line error message
         let mut error_message = format!(
             "{} ({:?})\n\nMessage: {}\n",
             context,
-            db_error.code(), // e.g., 42P01 (undefined_table)
+            db_error.code(),
             db_error.message()
         );
         if let Some(detail) = db_error.detail() {
@@ -192,11 +251,8 @@ fn format_db_error(e: &PostgresError, context: &str) -> String {
         if let Some(position) = db_error.position() {
             error_message.push_str(&format!("Position: at character {:?}\n", position));
         }
-        // Remove the last newline for clean output
         error_message.trim_end().to_string()
     } else {
-        // It's not a database-level error (e.g., I/O, connection)
-        // so the default Display is probably fine.
         format!("{}: {}", context, e)
     }
 }
