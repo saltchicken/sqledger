@@ -2,14 +2,12 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use postgres::{Client, Error as PostgresError, types::Type};
 
-
 #[derive(Clone, Debug)]
 pub struct Script {
     pub id: i32,
     pub name: String,
     pub content: String,
 }
-
 
 pub fn init_script_table(client: &mut Client) -> Result<(), String> {
     let query = "
@@ -23,7 +21,6 @@ pub fn init_script_table(client: &mut Client) -> Result<(), String> {
     ";
     client.batch_execute(query).map_err(|e| e.to_string())
 }
-
 
 pub fn get_all_scripts(client: &mut Client) -> Result<Vec<Script>, String> {
     let query = "SELECT id, name, content FROM sqledger_scripts ORDER BY name ASC";
@@ -41,7 +38,6 @@ pub fn get_all_scripts(client: &mut Client) -> Result<Vec<Script>, String> {
     Ok(scripts)
 }
 
-
 pub fn create_script(client: &mut Client, name: &str) -> Result<(), String> {
     client
         .execute(
@@ -52,14 +48,12 @@ pub fn create_script(client: &mut Client, name: &str) -> Result<(), String> {
     Ok(())
 }
 
-
 pub fn delete_script(client: &mut Client, id: i32) -> Result<(), String> {
     client
         .execute("DELETE FROM sqledger_scripts WHERE id = $1", &[&id])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
-
 
 pub fn rename_script(client: &mut Client, id: i32, new_name: &str) -> Result<(), String> {
     client
@@ -70,7 +64,6 @@ pub fn rename_script(client: &mut Client, id: i32, new_name: &str) -> Result<(),
         .map_err(|e| e.to_string())?;
     Ok(())
 }
-
 
 pub fn update_script_content(client: &mut Client, id: i32, content: &str) -> Result<(), String> {
     client

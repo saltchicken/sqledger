@@ -27,7 +27,6 @@ pub struct App {
 }
 
 impl App {
-
     pub fn new(client: &mut Client, db_url: &str) -> io::Result<Self> {
         let help_message = format!(
             "Welcome to sqledger!\n\nSource: Postgres Table (sqledger_scripts)\nDatabase: {}\n\n--- Keybinds ---\n'j'/'k'         : Navigate scripts\n'Enter'       : Run selected script\n'e'           : Edit selected script\n'a'           : Add a new script\n'd'           : Delete selected script\n'r'           : Rename selected script\n'c'           : Copy results to clipboard\n'h'/'l' or ←/→ : Scroll results horizontally\n↓/↑           : Scroll results vertically\n'?'           : Toggle this help message\n'q'           : Quit",
@@ -46,7 +45,6 @@ impl App {
             result_scroll_x: 0,
             result_scroll_y: 0,
         };
-
 
         app.refresh_scripts(client)
             .map_err(|e| io::Error::other(e))?;
@@ -84,7 +82,6 @@ impl App {
         self.result_scroll_y = self.result_scroll_y.saturating_add(1);
     }
 
-
     pub fn refresh_scripts(&mut self, client: &mut Client) -> Result<(), String> {
         let scripts = get_all_scripts(client)?;
         self.scripts = scripts;
@@ -105,7 +102,6 @@ impl App {
         self.update_preview();
         Ok(())
     }
-
 
     pub fn get_selected_script(&self) -> Option<&Script> {
         self.list_state.selected().and_then(|i| self.scripts.get(i))
@@ -155,3 +151,4 @@ impl App {
         }
     }
 }
+
