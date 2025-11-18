@@ -14,7 +14,6 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     // --- Left Pane: Script List ---
-
     let items: Vec<ListItem> = app
         .scripts
         .iter()
@@ -33,6 +32,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol(">> ");
+
     f.render_stateful_widget(list, chunks[0], &mut app.list_state);
 
     // --- Right Panes (Vertically Split) ---
@@ -42,7 +42,9 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         .split(chunks[1]);
 
     // Top-Right Pane: Script Preview
-    let preview_block = Block::default().borders(Borders::ALL).title("Preview");
+
+    let preview_title = format!("Preview (DB: {})", app.current_connection_name);
+    let preview_block = Block::default().borders(Borders::ALL).title(preview_title);
     let preview_text = Paragraph::new(app.script_content_preview.as_str()).block(preview_block);
     f.render_widget(preview_text, right_chunks[0]);
 
@@ -102,6 +104,64 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             f.render_widget(Clear, area);
             f.render_widget(popup_paragraph, area);
         }
+
+        InputMode::SelectingConnection => {
+            let area = centered_rect(40, 40, f.area());
+
+            let items: Vec<ListItem> = app
+                .connections
+                .keys()
+                .map(|name| {
+                    let display = if name == &app.current_connection_name {
+                        format!("* {}", name)
+                    } else {
+                        format!("  {}", name)
+                    };
+                    ListItem::new(display)
+                })
+                .collect();
+
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .title("Select Database")
+                        .borders(Borders::ALL)
+                        .style(Style::default().bg(Color::Blue).fg(Color::White)),
+                )
+                .highlight_style(
+                    Style::default()
+                        .bg(Color::White)
+                        .fg(Color::Blue)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .highlight_symbol(">> ");
+
+            f.render_widget(Clear, area);
+            f.render_stateful_widget(list, area, &mut app.connection_list_state);
+        }
+        InputMode::AddingConnectionName => {
+            let area = centered_rect(50, 3, f.area());
+            let input_text = format!("{}_", app.filename_input); // Reuse filename_input buffer
+            let popup_block = Block::default()
+                .title("Connection Name (e.g. 'Production')")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::Blue).fg(Color::White));
+            let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
+            f.render_widget(Clear, area);
+            f.render_widget(input_paragraph, area);
+        }
+
+        InputMode::AddingConnectionUrl => {
+            let area = centered_rect(70, 3, f.area());
+            let input_text = format!("{}_", app.filename_input); // Reuse filename_input buffer
+            let popup_block = Block::default()
+                .title(format!("URL for '{}'", app.new_connection_name_buffer))
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::Blue).fg(Color::White));
+            let input_paragraph = Paragraph::new(input_text.as_str()).block(popup_block);
+            f.render_widget(Clear, area);
+            f.render_widget(input_paragraph, area);
+        }
         InputMode::Normal => {
             // Do nothing
         }
@@ -109,6 +169,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 }
 
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
+    // ... (Logic remains the same, adjusting variable names slightly for clarity if needed, but kept as is)
     let (top_padding, bottom_padding) = {
         let total_padding = r.height.saturating_sub(height);
         (

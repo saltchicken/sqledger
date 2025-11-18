@@ -1,4 +1,3 @@
-// src/db.rs
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use postgres::{Client, Error as PostgresError, types::Type};
 
@@ -34,7 +33,6 @@ pub fn get_all_scripts(client: &mut Client) -> Result<Vec<Script>, String> {
             content: row.get(2),
         })
         .collect();
-
     Ok(scripts)
 }
 
@@ -82,8 +80,8 @@ pub struct QueryResult {
 }
 
 pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult, String> {
-    // ... (Rest of the file remains exactly the same as previous version)
     let mut relevant_sql = sql_content.trim();
+
     loop {
         relevant_sql = relevant_sql.trim_start();
         if relevant_sql.starts_with("--") {
@@ -106,6 +104,7 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
     }
 
     let upper_sql = relevant_sql.to_uppercase();
+
     if upper_sql.starts_with("SELECT") || upper_sql.starts_with("WITH") {
         match (|| -> Result<QueryResult, PostgresError> {
             let rows = client.query(sql_content, &[])?;
@@ -115,14 +114,17 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
                     row_count: Some(0),
                 });
             }
+
             let row_count = rows.len();
             let column_names: Vec<String> = rows[0]
                 .columns()
                 .iter()
                 .map(|c| c.name().to_string())
                 .collect();
+
             let mut widths: Vec<usize> = column_names.iter().map(|s| s.len()).collect();
             let mut rows_data: Vec<Vec<String>> = Vec::new();
+
             for row in &rows {
                 let mut values = Vec::<String>::new();
                 for (i, col) in row.columns().iter().enumerate() {
@@ -208,6 +210,7 @@ pub fn execute_sql(client: &mut Client, sql_content: &str) -> Result<QueryResult
                 }
                 output.push('\n');
             }
+
             Ok(QueryResult {
                 formatted_output: output,
                 row_count: Some(row_count),

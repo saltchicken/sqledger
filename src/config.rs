@@ -1,23 +1,29 @@
-use serde::Deserialize;
-use std::{fs, io, path::Path};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, fs, io, path::Path};
 
 pub const CONFIG_DIR_NAME: &str = "sqledger";
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
-    #[serde(default = "default_database_url")]
-    pub database_url: String,
+    #[serde(default = "default_connections")]
+    pub connections: HashMap<String, String>,
 }
 
-fn default_database_url() -> String {
-    "postgresql://postgres:postgres@localhost/postgres".to_string()
+
+fn default_connections() -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    map.insert(
+        "local".to_string(),
+        "postgresql://postgres:postgres@localhost/postgres".to_string(),
+    );
+    map
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            database_url: default_database_url(),
+            connections: default_connections(),
         }
     }
 }
@@ -29,14 +35,19 @@ pub fn setup_config() -> io::Result<Config> {
 
     // Create directory if it doesn't exist
     fs::create_dir_all(&config_dir_path)?;
-
     let config_path = config_dir_path.join(CONFIG_FILE_NAME);
 
     // Write default config if file doesn't exist
     if !config_path.exists() {
+
         fs::write(
             &config_path,
-            "# Configuration for sqledger\n\n# PostgreSQL connection string.\ndatabase_url = \"postgresql://postgres:postgres@localhost/postgres\"\n",
+            r#"# Configuration for sqledger
+
+[connections]
+local = "postgresql://postgres:postgres@localhost/postgres"
+# production = "postgresql://user:password@remote_host/dbname"
+"#,
         )?;
     }
 
@@ -56,3 +67,19 @@ pub fn load_config(config_path: &Path) -> Config {
     Config::default()
 }
 
+pub fn save_config(connections: &HashMap<String, String>) -> io::Result<()> {
+    let config_dir_path = dirs::config_dir()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Could not find config directory"))?
+        .join(CONFIG_DIR_NAME);
+    let config_path = config_dir_path.join(CONFIG_FILE_NAME);
+
+    let config = Config {
+        connections: connections.clone(),
+    };
+
+    let toml_string = toml::to_string(&config)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    fs::write(config_path, toml_string)?;
+    Ok(())
+}
