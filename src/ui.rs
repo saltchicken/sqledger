@@ -126,11 +126,10 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                     Block::default()
                         .title("Select Database")
                         .borders(Borders::ALL)
-                        .style(Style::default().bg(Color::Blue).fg(Color::White)),
+                        .style(Style::default()),
                 )
                 .highlight_style(
                     Style::default()
-                        .bg(Color::White)
                         .fg(Color::Blue)
                         .add_modifier(Modifier::BOLD),
                 )
