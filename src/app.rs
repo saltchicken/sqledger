@@ -37,26 +37,21 @@ pub struct App {
 }
 
 impl App {
-
     pub fn new(connections: HashMap<String, String>) -> io::Result<Self> {
-
         let (initial_name, initial_url) = connections
             .iter()
             .next()
             .map(|(k, v)| (k.clone(), v.clone()))
             .ok_or_else(|| io::Error::other("No connections defined in config"))?;
 
-
         let mut client = Client::connect(&initial_url, NoTls)
             .map_err(|e| io::Error::other(format!("DB connect error: {}", e)))?;
-
 
         init_script_table(&mut client)
             .map_err(|e| io::Error::other(format!("Failed to init DB table: {}", e)))?;
 
-        let help_message = format!(
-            "Welcome to sqledger!\n\n--- Keybinds ---\n'j'/'k'        : Navigate scripts\n'Enter'        : Run selected script\n'e'            : Edit selected script\n'a'            : Add a new script\n'd'            : Delete selected script\n'r'            : Rename selected script\n'D' (Shift+d)  : Switch Database ‼️\n'c'            : Copy results to clipboard\n'h'/'l'        : Scroll results horizontal\n↓/↑            : Scroll results vertical\n'?'            : Toggle Help\n'q'            : Quit"
-        );
+        let help_message = 
+            "Welcome to sqledger!\n\n--- Keybinds ---\n'j'/'k'        : Navigate scripts\n'Enter'        : Run selected script\n'e'            : Edit selected script\n'a'            : Add a new script\n'd'            : Delete selected script\n'r'            : Rename selected script\n'D' (Shift+d)  : Switch Database ‼️\n'c'            : Copy results to clipboard\n'h'/'l'        : Scroll results horizontal\n↓/↑            : Scroll results vertical\n'?'            : Toggle Help\n'q'            : Quit".to_string();
 
         let mut app = Self {
             client,
@@ -77,12 +72,10 @@ impl App {
             result_scroll_y: 0,
         };
 
-
-        app.refresh_scripts().map_err(|e| io::Error::other(e))?;
+        app.refresh_scripts().map_err(io::Error::other)?;
 
         Ok(app)
     }
-
 
     pub fn switch_connection(&mut self, name: &str) -> Result<(), String> {
         if let Some(url) = self.connections.get(name) {
@@ -113,7 +106,6 @@ impl App {
         }
     }
 
-
     pub fn refresh_scripts(&mut self) -> Result<(), String> {
         let scripts = get_all_scripts(&mut self.client)?;
         self.scripts = scripts;
@@ -133,7 +125,6 @@ impl App {
         Ok(())
     }
 
-
     pub fn next_connection(&mut self) {
         if self.connections.is_empty() {
             return;
@@ -150,7 +141,6 @@ impl App {
         };
         self.connection_list_state.select(Some(i));
     }
-
 
     pub fn previous_connection(&mut self) {
         if self.connections.is_empty() {
